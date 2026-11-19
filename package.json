@@ -1,0 +1,11 @@
+{
+  "name": "lgmini",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A bit of Light Gray RPG: a small top-down action RPG drawn and scored in code.",
+  "scripts": {
+    "start": "python3 -m http.server 4173",
+    "test": "node --test"
+  }
+}
