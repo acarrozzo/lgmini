@@ -38,6 +38,17 @@ export function strike(off, def, r = Math.random) {
   };
 }
 
+/**
+ * How far in front of the hero a swing lands, in pixels, for a blade of a
+ * length. It reaches a little past the tip. No blade is a punch. A short blade
+ * still reaches as far as every sword did when they were all one size, so the
+ * first sword is no worse than it was.
+ */
+export function swingReach(bladeLength) {
+  if (!bladeLength) return 8;
+  return Math.max(15, bladeLength + 3);
+}
+
 /** Total XP needed to reach the level after `level`: the original cubic curve. */
 export function nextLevelXp(level) {
   return 2 * Math.pow(level + 1, 3);

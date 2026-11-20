@@ -481,6 +481,40 @@ test('mini: a roll in the top tenth is a crit, and a crit doubles the damage', a
   assert.deepEqual([blocked.dmg, blocked.crit], [0, false], 'a top roll that is blocked whole is not a crit');
 });
 
+test('mini: a better sword is a bigger sword, and a bigger sword reaches farther', async () => {
+  const R = await load('rules.js');
+  const { ITEMS } = await load('data/items.js');
+  const { BLADES, bladeLength } = await load('art-sprites.js');
+  const swords = Object.entries(ITEMS).filter(([, item]) => item.slot === 'sword').sort((a, b) => a[1].str - b[1].str);
+  for (const [id] of swords) assert.ok(BLADES[id], `no blade drawn for ${id}`);
+  assert.ok(BLADES.hatchet, 'the hatchet is swung too');
+  for (let i = 1; i < swords.length; i++) {
+    const [worse, better] = [swords[i - 1][0], swords[i][0]];
+    assert.ok(bladeLength(better) > bladeLength(worse), `${better} is not longer than ${worse}`);
+    assert.ok(R.swingReach(bladeLength(better)) >= R.swingReach(bladeLength(worse)), `${better} reaches less than ${worse}`);
+  }
+  assert.equal(R.swingReach(0), 8, 'no sword is a punch');
+  assert.equal(R.swingReach(bladeLength('training-sword')), 15, 'the first sword reaches what every sword used to');
+  assert.equal(R.swingReach(bladeLength('long-sword')), 15);
+  assert.equal(R.swingReach(bladeLength('mithril-sword')), 23);
+});
+
+test('mini: a blade is painted around the hand, the same at every quarter turn', async () => {
+  const { BLADES, TURN, paintBlade, paintTrail, bladeLength } = await load('art-sprites.js');
+  const ink = (buf) => buf.d.filter((ch) => ch !== '.').length;
+  for (const name of Object.keys(BLADES)) {
+    const up = paintBlade(name, 0);
+    const mid = (up.w - 1) / 2;
+    assert.notEqual(up.get(mid, mid), '.', `${name}: the hand holds nothing`);
+    assert.notEqual(up.get(mid, mid - bladeLength(name) + 1), '.', `${name}: stops short of its length`);
+    assert.equal(up.get(mid, mid - bladeLength(name)), '.', `${name}: runs past its length`);
+    for (const turn of [4, 8, 12]) assert.equal(ink(paintBlade(name, turn)), ink(up), `${name}: turn ${turn} is not the same blade`);
+    for (let turn = 0; turn < TURN; turn++) assert.ok(ink(paintBlade(name, turn)) > 0, `${name}: nothing at turn ${turn}`);
+  }
+  assert.equal(ink(paintTrail(12, 5, 5)), 0, 'a blade that has not moved leaves no streak');
+  assert.ok(ink(paintTrail(12, 5, -1)) > ink(paintTrail(12, 5, 4)), 'the streak grows as the blade sweeps');
+});
+
 test('mini: the run clock reads as a clock, and the kings are listed in the order they fell', async () => {
   const R = await load('rules.js');
   assert.equal(R.clock(0), '0:00');

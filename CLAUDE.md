@@ -97,6 +97,8 @@ Chosen by Anthony:
 - The tagline is "A bit of Light Gray RPG."
 - A quest handed in pops a card the player has to close. The room dims, QUEST COMPLETE is in big gold, and under it are the quest's name and a plate for each reward. He picked this on 2026-11-19 over a small card in the middle of the room and one the size of the speech box. Its button says "Nice" on every quest. He looked at a word per quest and chose one for all.
 - A quest finished before its giver asked for it is asked and handed in with one line, in one visit, with the giver impressed. That line is the quest's `early`.
+- The sword gets bigger as it upgrades. Each is longer than the one before, the last two are wider, and each has its own metal. He picked this on 2026-11-19 over longer blades that all look like the old one, and over a bigger set where the Mithril Sword outgrows the hero.
+- The swing winds up, sweeps across the front and steps in. He tried it on 2026-11-19 and kept it on 2026-11-20, over a plain sweep from the side to the front and a sweep all the way across.
 
 Declined, do not bring back:
 
@@ -113,6 +115,9 @@ Claude's calls he has not confirmed:
 - The quest card: nothing is taken or paid until it is closed. It cannot be closed for its first half second. It replaced the "Quest done" lines that floated by. After it the giver goes on to their next quest in the same visit, so a player far ahead can get several cards in a row. A giver met for the first time still says their greeting before an `early` line. Gear on a plate says what it adds. Plates that do not fit one row go to a second.
 - Settings, built 2026-11-19 without the usual pictures first, because he said not to stop and ask. All of it is open to change: the layout of the screen, a fifth SETTINGS tab in the bag (tabs moved closer together to fit it), and a Settings line on the title screen (the title options moved up 13 pixels).
 - The settings themselves: Music and SFX sliders from 0 to 10 that start at 8, Mute, Hold to attack (off), Text speed, Screen shake, Rumble, Run clock shown or hidden, Scanlines (off), Fullscreen, Pad buttons, Keys, Defaults.
+- The swords: the Training Sword is wood and the Battle Axe is drawn as a two-headed axe. A blade is a short description in `BLADES` in `js/art-sprites.js`, painted at sixteen angles, not a grid. The HUD and the bag still show one sword icon for all of them.
+- A longer blade reaches farther: its length plus 3 pixels, and never less than the 15 every sword used to reach. The Mithril Sword reaches 23. A swing still hits only what is in front.
+- The swing is still 16 frames, so nothing attacks faster or slower. The step forward is drawn, not moved: the hero's place and hit box stay where they were. The hatchet and the bare fist use the same swing.
 - Hold to attack repeats the sword, the ranged weapon and the spell. It never talks, opens a chest or eats.
 - A button holds up to four keys. A key moves to the button it is given to.
 - Game pad: the bottom face button swings on Xbox and PlayStation pads, the right one on Nintendo pads, so the letter on screen is the letter on the pad. START is the bag and SELECT is the map. Shoulder buttons do nothing. Pad buttons cannot be remapped.

@@ -4,6 +4,7 @@
 
 import { W, TILE, COLS, ROWS, HUD_H, H, drawText, drawTextOutlined, textWidth, fillRect } from './gfx.js';
 import { bakeRoom, TILES, waterGlints } from './art-tiles.js';
+import { bladeLength } from './art-sprites.js';
 import { ROOMS } from './data/rooms.js';
 import { ENEMIES } from './data/enemies.js';
 import { ITEMS, statLine, countName } from './data/items.js';
@@ -18,6 +19,13 @@ import { foundEverything, roomsFound, EVERYWHERE } from './map.js';
 const FIELD_H = ROWS * TILE;
 const SPEED = 1.25;
 const SWING_T = 16;
+// The swing, frame by frame. The blade starts drawn back past the hero's side,
+// comes across the front, runs a little past straight ahead and settles there.
+const SWING_ARC = [5, 5, 4, 2, 0, -1, -1, -1];          // sixteenths of a turn off straight ahead
+const SWING_LEAN = [0, 1, 2, 2, 2, 2, 1, 1];            // pixels the hero steps into it
+const SWING_STREAK = [0, 0, 1, 1, 1, 0.6, 0.3, 0.3];    // how solid the streak behind the blade is
+const FACING = { up: 0, right: 4, down: 8, left: 12 };  // straight ahead, in sixteenths of a turn
+const HAND = { up: [11, 3], down: [4, 13], right: [12, 10], left: [3, 10] };   // where the blade turns
 const BODY = { x: 3, y: 8, w: 10, h: 8 };   // the hero's feet, for walls
 const HURT = { x: 3, y: 3, w: 10, h: 12 };  // the hero's body, for teeth
 const DIRV = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -458,7 +466,7 @@ export class Game {
 
   swingRect() {
     const h = this.hero;
-    const reach = this.p.gear.sword ? 15 : 8;   // no sword: a punch
+    const reach = R.swingReach(this.p.gear.sword ? bladeLength(this.p.gear.sword) : 0);
     if (h.dir === 'right') return { x: h.x + 11, y: h.y - 1, w: reach, h: 18 };
     if (h.dir === 'left') return { x: h.x + 5 - reach, y: h.y - 1, w: reach, h: 18 };
     if (h.dir === 'up') return { x: h.x - 1, y: h.y + 5 - reach, w: 18, h: reach };
@@ -1308,14 +1316,30 @@ export class Game {
     const body = frames[h.swing > 0 ? 1 : (h.step >> 3) & 3];
     const armed = !!this.p.gear.sword || !!h.tool;
     const f = SWING_T - h.swing;
+    if (h.swing > 0) {
+      const lean = SWING_LEAN[f] || 0;
+      x += DIRV[h.dir][0] * lean;
+      y += DIRV[h.dir][1] * lean;
+    }
     const drawSword = () => {
       if (h.swing <= 0 || !armed) return;
-      const sw = this.S.fx[h.tool || 'sword'][h.dir];
-      const sl = this.S.fx.slash[h.dir];
-      if (h.dir === 'up') { g.drawImage(sw, x + 9, y - 8); if (f < 7) g.drawImage(sl, x, y - 11); }
-      if (h.dir === 'down') { g.drawImage(sw, x + 2, y + 13); if (f < 7) g.drawImage(sl, x, y + 22); }
-      if (h.dir === 'right') { g.drawImage(sw, x + 12, y + 8); if (f < 7) g.drawImage(sl, x + 22, y); }
-      if (h.dir === 'left') { g.drawImage(sw, x - 8, y + 8); if (f < 7) g.drawImage(sl, x - 11, y); }
+      const name = h.tool || this.p.gear.sword;
+      // Facing right is facing left in a mirror, so it sweeps the other way.
+      const side = h.dir === 'right' ? -1 : 1;
+      const from = FACING[h.dir] + side * SWING_ARC[0];
+      const at = FACING[h.dir] + side * (SWING_ARC[f] || 0);
+      const hx = x + HAND[h.dir][0];
+      const hy = y + HAND[h.dir][1];
+      const solid = SWING_STREAK[f] || 0;
+      if (solid) {
+        const streak = this.S.fx.trail(bladeLength(name), from, at);
+        const was = g.globalAlpha;
+        g.globalAlpha = was * solid;
+        g.drawImage(streak, hx - (streak.width >> 1), hy - (streak.height >> 1));
+        g.globalAlpha = was;
+      }
+      const blade = this.S.fx.blade(name, at);
+      g.drawImage(blade, hx - (blade.width >> 1), hy - (blade.height >> 1));
     };
     const cell = Math.max(0, Math.min(ROWS - 1, Math.floor((h.y + 12) / TILE))) * COLS +
       Math.max(0, Math.min(COLS - 1, Math.floor((h.x + 8) / TILE)));

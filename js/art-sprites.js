@@ -621,44 +621,6 @@ const FX = {
   arrow: ['.....8', 'NNNNN88', '.....8'],
   rock: ['.5555', '566665', '566655', '565555', '.5555'],
   eorb: ['..VV', '.VllV', 'VlllvV', 'VllvvV', '.VvvV', '..VV'],
-  // Points up. Rotated for the other three directions.
-  sword: [
-    '..8',
-    '.686',
-    '.686',
-    '.686',
-    '.686',
-    '.686',
-    '.686',
-    '.686',
-    'YYYYY',
-    '.YnY',
-    '..n',
-    '..n',
-  ],
-  // Points up, the same size as the sword, so it swings from the same hand.
-  hatchet: [
-    '.n66.',
-    '.n668',
-    '.n668',
-    '.n668',
-    '.n66.',
-    '.n...',
-    '.n...',
-    '.n...',
-    '.n...',
-    '.n...',
-    '.n...',
-    '.B...',
-  ],
-  // The arc of a swing, across the top. Rotated for the other directions.
-  slash: [
-    '....88888888',
-    '..888......888',
-    '.88..........88',
-    '88............88',
-    '8..............8',
-  ],
   boomerang: [
     'NN',
     'NNN',
@@ -689,6 +651,111 @@ const FX = {
   ],
   spike: ['..8', '.868', '86068', '.868', '..8'],
 };
+
+// ------------------------------------------------------------ the blades
+// What the hero swings, keyed by item. A blade is described once, pointing up
+// out of the hand, and painted at sixteen angles so it can sweep. Each sword is
+// longer than the one before it, and the last two are wider.
+//   len    pixels of blade, tip included     half   pixels each side of the middle
+//   metal  edge, flat and middle colors      guard  [pixels each side, color]
+//   grip   [length, color, pommel color]
+// The Battle Axe and the hatchet are their own shapes: a length, and a head.
+export const BLADES = {
+  'training-sword': { len: 6, half: 1, metal: 'NNd', guard: [2, 'n'], grip: [2, 'B'] },
+  'long-sword': { len: 8, half: 1, metal: '668', guard: [2, 'Y'], grip: [3, 'n'] },
+  'battle-axe': { axe: 14, head: 3 },
+  'iron-sword': { len: 11, half: 1, metal: '558', guard: [2, '4'], grip: [3, 'b'] },
+  'steel-sword': { len: 13, half: 2, metal: '687', guard: [3, 'Y'], grip: [3, 'n', 'Y'] },
+  'mithril-sword': { len: 16, half: 2, metal: 'Wi8', guard: [3, 'Y'], grip: [3, 'U', 'Y'] },
+  hatchet: { hatchet: 12 },
+};
+// What a sword with no entry above is drawn as.
+const PLAIN_BLADE = 'long-sword';
+// A blade is painted at this many angles. 0 points up and 4 points right.
+export const TURN = 16;
+
+/** Pixels from the hand to the tip. */
+export function bladeLength(name) {
+  const b = BLADES[name] || BLADES[PLAIN_BLADE];
+  return b.axe || b.hatchet || b.grip[0] + 1 + b.len;
+}
+
+/**
+ * The color of a blade at one spot. `t` is pixels from the hand toward the tip
+ * and `s` is pixels across, to the right when the blade points up. Asking this
+ * for every pixel, at any angle, is what keeps a turned blade clean.
+ */
+function bladeAt(b, t, s) {
+  const a = Math.abs(s);
+  const u = t + 0.5;
+  if (u < 0) return '.';
+  if (b.hatchet) {
+    if (u >= b.hatchet) return '.';
+    if (a < 0.5) return u < 1 ? 'B' : 'n';
+    if (s < 0 || u < b.hatchet - 5) return '.';
+    if (s <= 2.3) return '6';
+    return s <= 3.3 && u >= b.hatchet - 4 && u < b.hatchet - 1 ? '8' : '.';
+  }
+  if (b.axe) {
+    if (u >= b.axe) return '.';
+    if (a < 0.5) return u < 1 ? 'B' : 'n';
+    // Two heads, each wider the farther it is from the shaft.
+    const fromHead = Math.abs(u - (b.axe - b.head - 0.5));
+    if (a > b.head + 0.3 || fromHead > 0.8 + a * 0.8) return '.';
+    return a > b.head - 0.8 ? '8' : a < 1.5 ? '5' : '6';
+  }
+  const [gripLen, gripColor, pommel] = b.grip;
+  const [guardHalf, guardColor] = b.guard;
+  if (u < gripLen) {
+    if (a < 0.5) return pommel && u < 1 ? pommel : gripColor;
+    return u >= gripLen - 1 && a < 1.3 ? guardColor : '.';
+  }
+  if (u < gripLen + 1) return a <= guardHalf + 0.3 ? guardColor : '.';
+  const along = u - gripLen - 1;
+  // The last rows narrow to a one pixel tip.
+  if (along >= b.len || a > Math.min(b.half + 0.3, b.len - along + 0.2)) return '.';
+  const [edge, flat, middle] = b.metal;
+  return a < 0.5 ? middle : a < b.half - 0.5 ? flat : edge;
+}
+
+/** A blade at one angle. The hand is the middle pixel of the square it comes back in. */
+export function paintBlade(name, turn) {
+  const b = BLADES[name] || BLADES[PLAIN_BLADE];
+  const r = bladeLength(name) + 1;
+  const buf = new Buf(r * 2 + 1, r * 2 + 1);
+  const ang = (turn / TURN) * Math.PI * 2;
+  const dx = Math.round(Math.sin(ang) * 1e6) / 1e6;
+  const dy = -Math.round(Math.cos(ang) * 1e6) / 1e6;
+  for (let y = -r; y <= r; y++) {
+    for (let x = -r; x <= r; x++) buf.px(x + r, y + r, bladeAt(b, x * dx + y * dy, y * dx - x * dy));
+  }
+  return buf;
+}
+
+/**
+ * The streak a blade of this length leaves sweeping from one angle to another:
+ * thin where the swing began and widest behind the blade. Same square as the blade.
+ */
+export function paintTrail(length, from, to) {
+  const r = length + 1;
+  const buf = new Buf(r * 2 + 1, r * 2 + 1);
+  const start = (from / TURN) * Math.PI * 2;
+  const sweep = ((to - from) / TURN) * Math.PI * 2;
+  if (!sweep) return buf;
+  for (let y = -r; y <= r; y++) {
+    for (let x = -r; x <= r; x++) {
+      const far = Math.hypot(x, y);
+      if (far > length + 0.5 || far < 3) continue;
+      let d = Math.atan2(x, -y) - start;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      const k = d / sweep;
+      if (k < 0 || k > 1 || far < length - (length * 0.5 * k + 0.6)) continue;
+      buf.px(x + r, y + r, far > length - 1.6 ? '8' : 'i');
+    }
+  }
+  return buf;
+}
 
 // Small pictures for the HUD slots and menus. 10x10.
 const ICONS = {
@@ -1010,6 +1077,13 @@ export function checkArt(PAL) {
   for (const [name, rows] of Object.entries(THINGS)) { const g = tryGrid(name, () => grid(rows, 16, 16)); if (g) check(name, g); }
   for (const [name, rows] of Object.entries(ICONS)) { const g = tryGrid(`icon.${name}`, () => grid(rows, 10, 10)); if (g) check(`icon.${name}`, g); }
   for (const [name, rows] of Object.entries(FX)) check(`fx.${name}`, rows);
+  for (const name of Object.keys(BLADES)) {
+    for (let turn = 0; turn < TURN; turn++) {
+      const b = tryGrid(`blade.${name}`, () => paintBlade(name, turn));
+      if (b) check(`blade.${name}@${turn}`, b.rows());
+    }
+  }
+  check('trail', paintTrail(12, 5, -1).rows());
   return errors;
 }
 
@@ -1113,12 +1187,19 @@ export function buildSprites() {
   S.things.houseShop = paintHouse(48, 'n', 'B', true, 'J').toCanvas('houseShop');
   S.things.housePub = paintHouse(64, 'o', 'r', true, 'I').toCanvas('housePub');
 
-  const sword = bake(FX.sword.map((r) => r.padEnd(5, '.')), null, 'sword');
-  S.fx.sword = { up: sword, right: rotate(sword, 1), down: rotate(sword, 2), left: rotate(sword, 3) };
-  const slash = bake(FX.slash.map((r) => r.padEnd(16, '.')), null, 'slash');
-  S.fx.slash = { up: slash, right: rotate(slash, 1), down: rotate(slash, 2), left: rotate(slash, 3) };
-  const hatchet = bake(FX.hatchet.map((r) => r.padEnd(5, '.')), null, 'hatchet');
-  S.fx.hatchet = { up: hatchet, right: rotate(hatchet, 1), down: rotate(hatchet, 2), left: rotate(hatchet, 3) };
+  // Blades and their streaks are painted the first time they are swung, then kept.
+  const swung = new Map();
+  const kept = (key, paint) => {
+    if (!swung.has(key)) swung.set(key, paint().toCanvas(key));
+    return swung.get(key);
+  };
+  /** A blade at an angle in sixteenths of a turn. Draw it with its middle on the hand. */
+  S.fx.blade = (name, turn) => {
+    const at = ((turn % TURN) + TURN) % TURN;
+    return kept(`blade ${name} ${at}`, () => paintBlade(name, at));
+  };
+  /** The streak behind a blade of this length that has swept from one angle to another. */
+  S.fx.trail = (length, from, to) => kept(`trail ${length} ${from} ${to}`, () => paintTrail(length, from, to));
   const boom = bake(FX.boomerang.map((r) => r.padEnd(8, '.')), null, 'boomerang');
   S.fx.boomerang = [boom, rotate(boom, 1), rotate(boom, 2), rotate(boom, 3)];
   S.fx.coin = bake(FX.coin.map((r) => r.padEnd(8, '.')), null, 'coin');
