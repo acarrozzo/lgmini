@@ -441,3 +441,192 @@ test('mini: the ending has words for every king and a reward card', async () => 
   assert.ok(ENDING.reward.length >= 3 && ENDING.reward.every((l) => typeof l === 'string' && l.length <= 76), 'reward lines fit two rows each');
   assert.ok(ENDING.reward.some((l) => l.includes('Anthony')));
 });
+
+test('mini: music and sound effects each have their own volume', async () => {
+  const A = await load('audio.js');
+  const { SETTINGS } = await load('data/settings.js');
+  assert.equal(A.levelGain(0), 0, 'the bottom of a slider is silence');
+  assert.equal(A.levelGain(A.VOLUME_DEFAULT), 1, 'where a slider starts is the mix the game was written at');
+  assert.ok(A.levelGain(A.VOLUME_MAX) > 1 && A.levelGain(A.VOLUME_MAX) < 2, 'the top is louder, not deafening');
+  assert.equal(A.levelGain(99), A.levelGain(A.VOLUME_MAX));
+  for (let i = 1; i <= A.VOLUME_MAX; i++) assert.ok(A.levelGain(i) > A.levelGain(i - 1), `step ${i} is louder than the one under it`);
+  const rows = Object.fromEntries(SETTINGS.map((r) => [r.key, r]));
+  assert.deepEqual([rows.music.kind, rows.sfx.kind, rows.music.def, rows.sfx.def], ['level', 'level', A.VOLUME_DEFAULT, A.VOLUME_DEFAULT]);
+});
+
+test('mini: a saved setting that makes no sense falls back to what it starts as', async () => {
+  const S = await load('state.js');
+  const { SETTINGS, TEXT_RATE } = await load('data/settings.js');
+  const fresh = S.readSettings({});
+  assert.deepEqual(fresh, S.readSettings(null));
+  assert.deepEqual([fresh.music, fresh.sfx, fresh.muted, fresh.hold, fresh.text, fresh.shake, fresh.clock, fresh.scan, fresh.pad],
+    [8, 8, false, false, 'normal', true, true, false, 'auto']);
+  assert.equal(fresh.full, undefined, 'fullscreen is the browser\'s to remember, not the save\'s');
+  const odd = S.readSettings({ music: 99, sfx: -4, muted: 'yes', hold: true, text: 'warp', pad: 'sega', best: { frames: 10 } });
+  assert.deepEqual([odd.music, odd.sfx, odd.muted, odd.hold, odd.text, odd.pad], [10, 0, false, true, 'normal', 'auto']);
+  assert.equal(odd.best, undefined, 'the best time is not a setting');
+  // An old save only knew "muted". It still means what it meant.
+  assert.equal(S.readSettings({ muted: true }).muted, true);
+  for (const row of SETTINGS) {
+    assert.ok(row.label && row.label.length <= 14, `${row.key}: the label fits its column`);
+    assert.ok(row.help && row.help.replace('DRAFT|', '').length <= 72, `${row.key}: the help fits two lines`);
+    if (row.kind === 'pick') assert.ok(row.choices.some((c) => c[0] === row.def), `${row.key} starts on one of its choices`);
+  }
+  const text = SETTINGS.find((r) => r.key === 'text');
+  for (const [value] of text.choices) assert.ok(TEXT_RATE[value] > 0, `no text speed for "${value}"`);
+});
+
+test('mini: left and right change a setting the way its kind says', async () => {
+  const { stepSetting, valueText } = await load('settings.js');
+  const { SETTINGS } = await load('data/settings.js');
+  const row = (key) => SETTINGS.find((r) => r.key === key);
+  assert.equal(stepSetting(row('music'), 8, 1), 9);
+  assert.equal(stepSetting(row('music'), 10, 1), 10, 'a slider stops at the top');
+  assert.equal(stepSetting(row('sfx'), 0, -1), 0, 'and at the bottom');
+  assert.equal(stepSetting(row('hold'), false, 1), true);
+  assert.equal(stepSetting(row('hold'), true, 1), false, 'a toggle flips either way');
+  assert.equal(stepSetting(row('text'), 'instant', 1), 'slow', 'a list goes round');
+  assert.equal(stepSetting(row('text'), 'slow', -1), 'instant');
+  assert.equal(valueText(row('hold'), true), 'on');
+  assert.equal(valueText(row('clock'), false), 'hidden');
+  assert.equal(valueText(row('pad'), 'nintendo'), 'Nintendo');
+});
+
+test('mini: a key can be added to a button, moved, and taken off, but never the last one', async () => {
+  const I = await load('input.js');
+  I.resetKeys();
+  I.setDevice('keys');
+  assert.equal(I.customKeys(), null, 'untouched keys are not worth saving');
+  assert.deepEqual(I.keysFor('a'), ['KeyZ', 'KeyJ', 'Space']);
+
+  // E does what V does.
+  assert.deepEqual(I.bindKey('x', 'KeyE'), { ok: true, from: null });
+  assert.deepEqual(I.keysFor('x'), ['KeyV', 'Semicolon', 'KeyE']);
+  assert.equal(I.bindKey('x', 'KeyE').why, 'have');
+  // A key on another button moves over.
+  assert.deepEqual(I.bindKey('x', 'KeyK'), { ok: true, from: 'b' });
+  assert.deepEqual(I.keysFor('b'), ['KeyX']);
+  assert.equal(I.bindKey('x', 'KeyP').why, 'full', 'four keys to a button');
+  // The only key a button has stays where it is.
+  assert.deepEqual(I.bindKey('a', 'KeyM'), { ok: false, why: 'last', from: 'mute' });
+  assert.deepEqual(I.unbindKey('b', 'KeyX'), { ok: false, why: 'last', from: 'b' });
+  assert.equal(I.unbindKey('x', 'KeyV').ok, true);
+  assert.equal(I.label('x'), ';', 'the game names the first key a button has left');
+
+  // Esc always backs out, and the browser keeps its own keys.
+  assert.equal(I.bindKey('a', 'Escape').why, 'fixed');
+  assert.equal(I.unbindKey('start', 'Escape').why, 'fixed');
+  for (const code of ['F5', 'MetaLeft', 'ControlLeft', 'AltRight', '']) assert.equal(I.bindKey('a', code).why, 'blocked', `${code} is not for the game`);
+  assert.equal(I.bindable('ShiftLeft'), true);
+
+  // What is saved comes back the same.
+  const saved = JSON.parse(JSON.stringify(I.customKeys()));
+  I.resetKeys();
+  assert.deepEqual(I.keysFor('x'), ['KeyV', 'Semicolon']);
+  I.setKeys(saved);
+  assert.deepEqual(I.keysFor('x'), ['Semicolon', 'KeyE', 'KeyK']);
+  assert.deepEqual(I.keysFor('b'), ['KeyX']);
+  I.resetKeys();
+});
+
+test('mini: a broken set of saved keys cannot lock you out', async () => {
+  const I = await load('input.js');
+  const def = I.DEFAULT_KEYS;
+  assert.deepEqual(I.normalizeKeys(null), def);
+  assert.deepEqual(I.normalizeKeys(def), def);
+  assert.deepEqual(I.normalizeKeys('nonsense'), def);
+  // The same key on two buttons: the first one keeps it, the other gets its own back.
+  const twice = I.normalizeKeys({ ...def, a: ['KeyZ'], b: ['KeyZ'] });
+  assert.deepEqual([twice.a, twice.b], [['KeyZ'], ['KeyX', 'KeyK']]);
+  // A button with nothing, a key the browser keeps, and Esc left off.
+  const holes = I.normalizeKeys({ ...def, a: [], map: ['F5'], start: ['Enter'] });
+  assert.deepEqual(holes.a, ['KeyZ', 'KeyJ', 'Space']);
+  assert.deepEqual(holes.map, ['Tab', 'KeyQ']);
+  assert.ok(holes.start.includes('Escape'), 'Esc is always there');
+  // A save that only mentions one button still moves the key it names.
+  const one = I.normalizeKeys({ b: ['KeyZ'] });
+  assert.deepEqual([one.b, one.a], [['KeyZ'], ['KeyJ', 'Space']]);
+  for (const map of [twice, holes, one]) {
+    const all = Object.values(map).flat();
+    assert.equal(new Set(all).size, all.length, 'no key is on two buttons');
+    for (const [button, list] of Object.entries(map)) assert.ok(list.length >= 1 && list.length <= I.MAX_KEYS, `${button} has ${list.length} keys`);
+  }
+});
+
+test('mini: keys are called what is printed on them', async () => {
+  const I = await load('input.js');
+  assert.deepEqual(['KeyZ', 'Digit7', 'ArrowUp', 'Space', 'Semicolon', 'ShiftLeft', 'Numpad4', 'Escape'].map(I.keyName),
+    ['Z', '7', 'Up', 'Space', ';', 'LShift', 'Num4', 'Esc']);
+  I.resetKeys();
+  I.setDevice('keys');
+  assert.equal(I.moveName(), 'Arrows');
+  // Space as the only swing key: the HUD corner has room for two letters.
+  I.unbindKey('a', 'KeyZ');
+  I.unbindKey('a', 'KeyJ');
+  assert.equal(I.label('a'), 'Space');
+  assert.equal(I.tag('a'), 'Sp');
+  I.bindKey('a', 'KeyE');
+  assert.equal(I.tag('a'), 'E', 'a short key is a better fit than half a long one');
+  // Take the arrows off and the game stops saying "the arrows".
+  for (const [button, code] of [['up', 'ArrowUp'], ['down', 'ArrowDown'], ['left', 'ArrowLeft'], ['right', 'ArrowRight']]) I.unbindKey(button, code);
+  assert.equal(I.moveName(), 'W A S D');
+  assert.equal(I.withKeys('{move}'), 'W, A, S and D move you.');
+  I.resetKeys();
+  assert.equal(I.withKeys('{move} {a} swings.'), 'The arrows move you. Z swings.');
+});
+
+test('mini: a game pad is read by where its buttons sit, and named by what they say', async () => {
+  const I = await load('input.js');
+  const pad = (down = [], axes = [0, 0]) => ({ buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: down.includes(i), value: down.includes(i) ? 1 : 0 })), axes });
+  const on = (state) => Object.keys(state).filter((k) => state[k]).sort();
+
+  assert.deepEqual(on(I.readPad(pad())), []);
+  // Xbox and PlayStation: the bottom button swings. Nintendo prints B there.
+  assert.deepEqual(on(I.readPad(pad([0]), 'xbox')), ['a']);
+  assert.deepEqual(on(I.readPad(pad([0]), 'playstation')), ['a']);
+  assert.deepEqual(on(I.readPad(pad([0]), 'nintendo')), ['b']);
+  assert.deepEqual(on(I.readPad(pad([1, 2, 3]), 'xbox')), ['b', 'x', 'y']);
+  assert.deepEqual(on(I.readPad(pad([2]), 'nintendo')), ['y'], 'Nintendo prints Y on the left');
+  assert.deepEqual(on(I.readPad(pad([8, 9, 12, 15]))), ['map', 'right', 'start', 'up']);
+  // The stick: a dead zone, then eight directions.
+  assert.deepEqual(on(I.readPad(pad([], [0.2, -0.3]))), []);
+  assert.deepEqual(on(I.readPad(pad([], [-0.9, 0.1]))), ['left']);
+  assert.deepEqual(on(I.readPad(pad([], [0.7, 0.7]))), ['down', 'right']);
+  assert.deepEqual(on(I.readPad({ buttons: [1, 0], axes: [] })), ['a'], 'a pad that reports plain numbers still works');
+  assert.deepEqual(on(I.readPad(null)), []);
+
+  assert.equal(I.padKind('Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)'), 'xbox');
+  assert.equal(I.padKind('Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 09cc)'), 'playstation');
+  assert.equal(I.padKind('Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)'), 'nintendo');
+  assert.equal(I.padKind('Some Pad Nobody Has Heard Of'), 'xbox');
+
+  I.setDevice('pad');
+  I.setPadLayout('xbox');
+  assert.deepEqual(['a', 'b', 'x', 'y', 'start', 'map', 'back'].map(I.label), ['A', 'B', 'X', 'Y', 'START', 'SELECT', 'B']);
+  assert.equal(I.moveName(), 'Stick');
+  I.setPadLayout('playstation');
+  assert.equal(I.withKeys('{a} swings. {b} throws.'), '× swings. ○ throws.');
+  I.setPadLayout('nonsense');
+  I.setDevice('keys');
+  assert.equal(I.label('a'), 'Z');
+});
+
+test('mini: everything the Settings screen can say has letters to say it with', async () => {
+  const { SETTINGS, BUTTON_NAMES, NOTES } = await load('data/settings.js');
+  const { GLYPHS } = await load('font.js');
+  const I = await load('input.js');
+  const { plain } = await load('world.js');
+  const said = [];
+  for (const row of SETTINGS) said.push(row.label, row.help, ...(row.words || []), ...(row.choices || []).map((c) => c[1]));
+  said.push(...Object.values(BUTTON_NAMES), ...Object.values(NOTES));
+  for (const layout of Object.values(I.PAD_LAYOUTS)) said.push(...Object.values(layout.names));
+  for (const code of Object.values(I.DEFAULT_KEYS).flat()) said.push(I.keyName(code));
+  for (const line of said) {
+    // {a}, {key} and the like are filled in before a line is drawn.
+    for (const ch of plain(line).replace(/\{\w+\}/g, '')) assert.ok(GLYPHS[ch] !== undefined, `no glyph for "${ch}" in: ${line}`);
+  }
+  for (const button of I.ACTIONS) assert.ok(BUTTON_NAMES[button] && BUTTON_NAMES[button].length <= 5, `${button} needs a short name for the Keys page`);
+  // A line that names a button names it with a token, so it is right on every device.
+  const bad = /\b[ABXY] (swings|throws|casts|eats|talks|closes|buys|uses|opens|cancels)\b|\b(Esc|START) (cancels|closes|opens)\b/;
+  for (const line of [...SETTINGS.map((r) => r.help), ...Object.values(NOTES)]) assert.ok(!bad.test(line), `names a button outright: ${line}`);
+});

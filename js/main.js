@@ -3,9 +3,10 @@
 import { W, H, HUD_H, drawText, drawTextCentered, textWidth, fillRect, makeCanvas } from './gfx.js';
 import { buildSprites } from './art-sprites.js';
 import { bakeRoom } from './art-tiles.js';
-import { initInput, pollInput, pressed, label } from './input.js';
-import { initAudio, playSong, setMuted, isMuted, sfx } from './audio.js';
-import { loadGame, clearSave, loadPrefs, savePrefs } from './state.js';
+import { initInput, pollInput, pressed, label, currentDevice, inputStamp, moveName } from './input.js';
+import { initAudio, playSong, isMuted, sfx } from './audio.js';
+import { loadGame, clearSave, prefs, savePrefs, settings, setSetting } from './state.js';
+import { newSettingsState, updateSettings, drawSettings, applySettings, applyKeys, SETTINGS_H } from './settings.js';
 import { newPlayer, addItem, takeGear, isBest, clock } from './rules.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
@@ -16,8 +17,8 @@ const canvas = document.getElementById('screen');
 const g = canvas.getContext('2d');
 g.imageSmoothingEnabled = false;
 
-const prefs = loadPrefs();
-setMuted(!!prefs.muted);
+applySettings();
+applyKeys();
 let saved = loadGame();
 
 const S = buildSprites();
@@ -27,7 +28,7 @@ if (problems.length) console.warn('Light Gray Mini: world data problems\n' + pro
 let scene = 'title';
 let game = null;
 let ui = null;
-const title = { sel: 0, confirm: false, t: 0, backdrop: bakeRoom({ ...ROOMS['000'], id: '000' }).bg };
+const title = { sel: 0, confirm: false, settings: null, t: 0, backdrop: bakeRoom({ ...ROOMS['000'], id: '000' }).bg };
 
 // ------------------------------------------------------------------ sizing
 
@@ -43,6 +44,10 @@ function fit() {
   scale = Math.max(1, scale);
   canvas.style.width = `${Math.floor(W * scale)}px`;
   canvas.style.height = `${Math.floor(H * scale)}px`;
+  // Scanlines are one dark row per game pixel, so they need to know how big a pixel is.
+  // Under two screen pixels each there is no room for one.
+  document.body.style.setProperty('--px', `${scale}px`);
+  document.body.classList.toggle('small', scale < 2);
 }
 window.addEventListener('resize', fit);
 new MutationObserver(fit).observe(document.body, { attributes: true, attributeFilter: ['class'] });
@@ -86,6 +91,10 @@ function begin(player, fresh) {
 function updateTitle() {
   title.t += 1;
   const options = titleOptions();
+  if (title.settings) {
+    if (updateSettings(title.settings)) title.settings = null;
+    return;
+  }
   if (title.confirm) {
     if (pressed.a) { clearSave(); saved = null; sfx.confirm(); begin(newPlayer(), true); }
     else if (pressed.b || pressed.start) { title.confirm = false; sfx.select(); }
@@ -95,13 +104,14 @@ function updateTitle() {
   if (!(pressed.a || pressed.start)) return;
   const pick = options[Math.min(title.sel, options.length - 1)];
   sfx.confirm();
-  if (pick === 'Continue') begin(saved, false);
+  if (pick === 'Settings') title.settings = newSettingsState();
+  else if (pick === 'Continue') begin(saved, false);
   else if (saved) title.confirm = true;
   else begin(newPlayer(), true);
 }
 
 function titleOptions() {
-  return saved ? ['Continue', 'New Game'] : ['Start'];
+  return saved ? ['Continue', 'New Game', 'Settings'] : ['Start', 'Settings'];
 }
 
 function big(text, scale, color) {
@@ -138,7 +148,7 @@ function drawTitle() {
   } else {
     const options = titleOptions();
     options.forEach((o, i) => {
-      const y = 160 + i * 13;
+      const y = 147 + i * 13;
       const on = i === Math.min(title.sel, options.length - 1);
       drawTextCentered(g, o, W / 2, y, on ? 'J' : 'a');
       if (on && (title.t >> 4) % 2 === 0) drawText(g, '▶', W / 2 - textWidth(o) / 2 - 10, y, 'J');
@@ -147,15 +157,41 @@ function drawTitle() {
     if (prefs.best && prefs.best.frames) drawTextCentered(g, `Best ${clock(prefs.best.frames)}`, W / 2, 204, '%');
   }
   if (isMuted()) drawText(g, 'sound off', 4, 4, '%');
+  if (title.settings) {
+    g.globalAlpha = 0.8;
+    fillRect(g, 0, 0, W, H, 'q');
+    g.globalAlpha = 1;
+    drawSettings(g, title.settings, Math.round((H - SETTINGS_H) / 2));
+  }
+}
+
+// ------------------------------------------------------ the line under it
+
+// On a desk the page lists the buttons under the screen. They are whatever
+// the player is holding and whatever keys they have set.
+const hintEl = document.getElementById('keys');
+let hintStamp = '';
+function drawHint() {
+  const now = inputStamp();
+  if (!hintEl || now === hintStamp) return;
+  hintStamp = now;
+  const parts = [[moveName(), 'move'], [label('a'), 'swing / talk'], [label('b'), 'throw'], [label('y'), 'cast'],
+    [label('x'), 'eat'], [label('start'), 'bag'], [label('map'), 'map'], [label('mute'), 'sound']];
+  hintEl.replaceChildren();
+  for (const [name, does] of parts) {
+    if (!name) continue;
+    const b = document.createElement('b');
+    b.textContent = name;
+    hintEl.append(b, ` ${does} \u00a0 `);
+  }
 }
 
 // -------------------------------------------------------------------- loop
 
 function tick() {
   if (pressed.mute) {
-    setMuted(!isMuted());
-    prefs.muted = isMuted();
-    savePrefs(prefs);
+    setSetting('muted', !settings.muted);
+    applySettings();
   }
   if (scene === 'title') { updateTitle(); return; }
   // The run clock: it counts whenever the game is open, and stops at Camp Hero.
@@ -185,6 +221,7 @@ function frame(now) {
     acc -= STEP;
   }
   render();
+  if (currentDevice() !== 'touch') drawHint();
   requestAnimationFrame(frame);
 }
 
@@ -196,5 +233,10 @@ initInput({
 });
 fit();
 // ?debug: start without the title screen, for checking rooms from the console.
-if (new URLSearchParams(location.search).has('debug')) window.__lgmStart = () => begin(newPlayer(), true);
+if (new URLSearchParams(location.search).has('debug')) {
+  window.__lgmStart = () => begin(newPlayer(), true);
+  // Run the loop by hand. A page in a background tab gets no frames, so a
+  // check that presses keys has to turn the crank itself.
+  window.__lgmStep = (n = 1) => { for (let i = 0; i < n; i++) { pollInput(); tick(); } render(); };
+}
 requestAnimationFrame(frame);

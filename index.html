@@ -23,12 +23,22 @@
     align-items: center; justify-content: center; gap: 10px;
   }
   body.touch #app { justify-content: flex-start; gap: 0; }
+  #stage { position: relative; flex: none; }
   #screen {
-    display: block; flex: none; background: #000;
+    display: block; background: #000;
     image-rendering: pixelated; image-rendering: crisp-edges;
     box-shadow: 0 0 0 2px var(--raised), 0 0 0 4px #000;
   }
   body.touch #screen { box-shadow: none; }
+  /* Scanlines, when Settings turns them on: the bottom row of every game pixel
+     goes dark. --px is how big a game pixel is on screen; main.js keeps it. */
+  #scan { display: none; position: absolute; inset: 0; pointer-events: none; }
+  body.scan:not(.small) #scan {
+    display: block;
+    background: repeating-linear-gradient(to bottom,
+      transparent 0, transparent calc(var(--px) - 1px),
+      rgba(0, 0, 0, 0.3) calc(var(--px) - 1px), rgba(0, 0, 0, 0.3) var(--px));
+  }
   #keys { color: var(--muted); font-size: 12px; letter-spacing: 0.02em; }
   #keys b { color: var(--text); font-weight: 600; }
   body.touch #keys { display: none; }
@@ -91,7 +101,10 @@
 </head>
 <body>
 <div id="app">
-  <canvas id="screen" width="256" height="224"></canvas>
+  <div id="stage">
+    <canvas id="screen" width="256" height="224"></canvas>
+    <div id="scan"></div>
+  </div>
   <div id="keys"><b>Arrows</b> move &nbsp; <b>Z</b> swing / talk &nbsp; <b>X</b> throw &nbsp; <b>C</b> cast &nbsp; <b>V</b> eat &nbsp; <b>Enter</b> bag &nbsp; <b>Tab</b> map &nbsp; <b>M</b> sound</div>
   <div id="pad">
     <div id="dpad" data-dir=""><i class="u"></i><i class="d"></i><i class="l"></i><i class="r"></i></div>

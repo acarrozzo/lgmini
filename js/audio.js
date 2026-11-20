@@ -12,6 +12,24 @@ let noiseBuffer = null;
 let triShape = null;
 const pulseWaves = {};
 let muted = false;
+// How loud each bus is with its slider where it starts, and where the sliders are now.
+const MUSIC_GAIN = 0.42;
+const SFX_GAIN = 0.55;
+let musicVol = 1;
+let sfxVol = 1;
+
+export const VOLUME_MAX = 10;
+export const VOLUME_DEFAULT = 8;
+
+/**
+ * A volume slider's step as a gain. 0 is silent, the default step is the mix
+ * the game was written at, and the top is about half again as loud. Squared,
+ * because ears hear steps that way.
+ */
+export function levelGain(level) {
+  const n = Math.max(0, Math.min(VOLUME_MAX, Number(level) || 0));
+  return (n / VOLUME_DEFAULT) ** 2;
+}
 
 const NOTE_INDEX = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
 
@@ -80,12 +98,13 @@ export function initAudio() {
   master.connect(ac.destination);
 
   sfxBus = ac.createGain();
-  sfxBus.gain.value = 0.55;
+  sfxBus.gain.value = SFX_GAIN * sfxVol;
   sfxBus.connect(master);
 
   // Music goes out dry and through a short dark echo, the cheap-hardware kind.
+  // The echo is fed after the gain, so turning the music down turns it down too.
   musicBus = ac.createGain();
-  musicBus.gain.value = 0.42;
+  musicBus.gain.value = MUSIC_GAIN * musicVol;
   musicBus.connect(master);
   const delay = ac.createDelay(1);
   delay.delayTime.value = 0.23;
@@ -132,6 +151,17 @@ export function setMuted(value) {
 
 export function isMuted() {
   return muted;
+}
+
+/** Music and sound effects each have their own volume: a gain, 1 being the usual mix. */
+export function setMusicVolume(gain) {
+  musicVol = Math.max(0, Number(gain) || 0);
+  if (musicBus) musicBus.gain.setTargetAtTime(MUSIC_GAIN * musicVol, ac.currentTime, 0.02);
+}
+
+export function setSfxVolume(gain) {
+  sfxVol = Math.max(0, Number(gain) || 0);
+  if (sfxBus) sfxBus.gain.setTargetAtTime(SFX_GAIN * sfxVol, ac.currentTime, 0.02);
 }
 
 // ------------------------------------------------------------------ voices

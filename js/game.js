@@ -10,9 +10,9 @@ import { ITEMS, statLine, countName } from './data/items.js';
 import { QUESTS, PEOPLE, currentQuest, questProgress } from './data/quests.js';
 import * as R from './rules.js';
 import { neighbor, check, edgeGate, EDGES } from './world.js';
-import { pressed, axis, clearInput, label } from './input.js';
+import { pressed, held, axis, clearInput, label, rumble } from './input.js';
 import { sfx, playSong } from './audio.js';
-import { saveGame } from './state.js';
+import { saveGame, settings } from './state.js';
 import { foundEverything, roomsFound, EVERYWHERE } from './map.js';
 
 const FIELD_H = ROWS * TILE;
@@ -31,6 +31,8 @@ function rollFeed(verb, verbColor, name, roll, color) {
   return [[verb, verbColor], [name, 'a'], [`${roll.a}`, color], ['-', '%'], [`${roll.d}`, 'K'], ['=', '%'], [`${roll.dmg}`, roll.dmg ? '9' : '%']];
 }
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+/** Shake the pad or the phone, if the player has not turned that off. */
+const buzz = (ms, strength) => { if (settings.rumble) rumble(ms, strength); };
 
 export class Game {
   constructor({ sprites, ui, player }) {
@@ -338,6 +340,13 @@ export class Game {
       } else if (pressed.b) this.throwBoomerang();
       else if (pressed.y) this.castSpell();
       else if (pressed.x) this.quickItem();
+      else if (settings.hold) {
+        // Hold to attack: a button kept down goes again as soon as it can. It
+        // never talks, opens or eats for you; those still take a press.
+        if (held.a) { if (!this.facingThing()) this.startSwing(); }
+        else if (held.b) this.throwBoomerang();
+        else if (held.y) this.castSpell(true);
+      }
     }
     if (this.ui.busy || this.mode !== 'play') return;
 
@@ -543,6 +552,7 @@ export class Game {
     if (crit) {
       sfx.crit();
       this.shake = 8;
+      buzz(70, 0.5);
       this.float(fx - 9, m.y - 27, 'CRIT', '$', wait);
     } else sfx.hit();
     this.float(fx - (dmg > 9 ? 3 : 0), m.y - 4, `${dmg}`, crit ? '$' : '8', wait);
@@ -648,6 +658,7 @@ export class Game {
       return;
     }
     sfx.hurt();
+    buzz(140, 0.8);
     this.float(h.x + 5, h.y - 6, `${hit.dmg}`, '@', CLASH_SETTLE);
     p.hp = Math.max(0, p.hp - hit.dmg);
     h.inv = 50;
@@ -835,15 +846,16 @@ export class Game {
     this.shots.push({ kind: 'boom', x: h.x + 4 + dx * 8, y: h.y + 6 + dy * 8, vx: dx * 3.2, vy: dy * 3.2, t: 0, back: false, hits: new Set() });
   }
 
-  castSpell() {
+  /** again: the button is being held, so a spell that can't go off says nothing. */
+  castSpell(again = false) {
     const h = this.hero;
     const p = this.p;
     if (!p.spell || h.cdY > 0) return;
     const s = R.SPELLS[p.spell];
     const mag = R.effectiveStats(p).mag;
-    if (p.mp < s.mp) { sfx.deny(); this.ui.setFeed([['Not enough MP.', 'E']]); return; }
+    if (p.mp < s.mp) { if (!again) { sfx.deny(); this.ui.setFeed([['Not enough MP.', 'E']]); } return; }
     if (s.kind === 'heal') {
-      if (p.hp >= p.hpMax) { sfx.deny(); this.ui.setFeed([['You are not hurt.', 'a']]); return; }
+      if (p.hp >= p.hpMax) { if (!again) { sfx.deny(); this.ui.setFeed([['You are not hurt.', 'a']]); } return; }
       p.mp -= s.mp;
       const n = Math.min(s.roll(mag), p.hpMax - p.hp);
       p.hp += n;
@@ -1374,7 +1386,7 @@ export class Game {
       g.drawImage(this.bake.fg, ox, oy);
       g.drawImage(s.toBake.fg, nx, ny);
     } else {
-      if (this.shake > 0) g.translate(rnd(3) - 1, rnd(3) - 1);
+      if (this.shake > 0 && settings.shake) g.translate(rnd(3) - 1, rnd(3) - 1);
       this.drawRoomLayer(g, this.bake, this.things, 0, 0, true);
       const list = [];
       this.drawThings(g, this.things, 0, 0, list);
@@ -1402,7 +1414,8 @@ export class Game {
       if (this.mode === 'play' && !this.ui.busy && this.hero.swing <= 0) {
         const th = this.facingThing();
         if (th && (this.t >> 4) % 2 === 0) {
-          drawTextOutlined(g, label('a'), th.cx * TILE + th.w * 8 - 3, (th.cy + th.h) * TILE - this.thingSprite(th).height - 9, 'J', 'q');
+          const name = label('a');
+          drawTextOutlined(g, name, th.cx * TILE + th.w * 8 - Math.round(textWidth(name) / 2), (th.cy + th.h) * TILE - this.thingSprite(th).height - 9, 'J', 'q');
         }
       }
 

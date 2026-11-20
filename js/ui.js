@@ -4,18 +4,21 @@
 // meaning (HP red, MP blue, XP green, gold gold).
 
 import { W, H, HUD_H, drawText, drawTextCentered, drawTextOutlined, textWidth, wrap, panel, fillRect, makeCanvas, rng } from './gfx.js';
-import { pressed, label, withKeys } from './input.js';
+import { pressed, label, tag, withKeys } from './input.js';
 import { sfx } from './audio.js';
 import { ITEMS, SLOT_LABEL, statLine } from './data/items.js';
 import { QUESTS, SHOPS, ENDING, questProgress } from './data/quests.js';
 import { ENEMIES } from './data/enemies.js';
 import * as R from './rules.js';
 import { plain } from './world.js';
-import { saveGame } from './state.js';
+import { saveGame, settings } from './state.js';
 import { newMapState, updateMap, drawMap, EVERYWHERE } from './map.js';
+import { newSettingsState, updateSettings, drawSettings } from './settings.js';
+import { TEXT_RATE, NOTES } from './data/settings.js';
 
 const WRAP = 38;
-const TABS = ['STATUS', 'BAG', 'MAGIC', 'QUESTS'];
+const TABS = ['STATUS', 'BAG', 'MAGIC', 'QUESTS', 'SETTINGS'];
+const SETTINGS_TAB = TABS.indexOf('SETTINGS');
 const STAT_COLOR = { str: 'A', dex: 'I', def: 'K', mag: 'L' };
 // What a stat is, said as the roll it makes: more of it is a bigger die.
 const STAT_NOTE = {
@@ -145,7 +148,10 @@ export class UI {
     else if (m.type === 'menu') this.updateMenu(m);
     else if (m.type === 'shop') this.updateShop(m);
     else if (m.type === 'map') updateMap(this, m);
-    else if (m.type === 'dead') {
+    else if (m.type === 'settings') {
+      // Backing out of Settings lands on the tab it was opened from.
+      if (updateSettings(m)) this.modal = { type: 'menu', tab: SETTINGS_TAB, row: 0 };
+    } else if (m.type === 'dead') {
       m.t += 1;
       if (m.t > 70 && pressed.a) { this.modal = null; m.cb(); }
     } else if (m.type === 'ending') this.updateEnding(m);
@@ -186,7 +192,7 @@ export class UI {
     const total = m.pages[m.page].reduce((n, l) => n + l.length, 0);
     if (m.shown < total) {
       const before = Math.floor(m.shown);
-      m.shown = Math.min(total, m.shown + 1.2);
+      m.shown = Math.min(total, m.shown + (TEXT_RATE[settings.text] || TEXT_RATE.normal));
       if (Math.floor(m.shown) !== before && Math.floor(m.shown) % 3 === 0) sfx.text();
     }
     if (pressed.a || pressed.b) {
@@ -230,6 +236,10 @@ export class UI {
     if (rows.length) {
       if (pressed.up) { m.row = (m.row + rows.length - 1) % rows.length; sfx.select(); }
       if (pressed.down) { m.row = (m.row + 1) % rows.length; sfx.select(); }
+    }
+    if (m.tab === SETTINGS_TAB) {
+      if (pressed.a) { sfx.confirm(); this.modal = newSettingsState(); }
+      return;
     }
     if (!pressed.a || !rows.length) return;
     const pick = rows[m.row];
@@ -280,6 +290,7 @@ export class UI {
     else if (m.type === 'menu') this.drawMenu(g, m);
     else if (m.type === 'shop') this.drawShop(g, m);
     else if (m.type === 'map') drawMap(g, this, m);
+    else if (m.type === 'settings') drawSettings(g, m, HUD_H + 6);
     else if (m.type === 'dead') this.drawDead(g, m);
     else if (m.type === 'ending') this.drawEnding(g, m);
   }
@@ -303,28 +314,28 @@ export class UI {
     if (p.cp > 0 && (this.t >> 4) % 2 === 0) drawText(g, `+${p.cp}`, 84, 13, 'J');
     g.drawImage(this.S.fx.coin, 112, 12);
     drawText(g, `${p.gold}`, 123, 13, 'J');
-    if (!p.untimed) {
+    if (!p.untimed && settings.clock) {
       // The run clock. It stops, and turns gold, at Camp Hero.
       const time = R.clock(p.flags.ended && p.splits.end !== undefined ? p.splits.end : p.frames);
       drawText(g, time, 189 - textWidth(time), 13, p.flags.ended ? 'J' : '%');
     }
 
     // The three slots, each lettered with the button that fires it.
+    // tag() is the button's name cut to fit: a key can be called Space.
     const slots = [
-      [label('b'), p.gear.ranged ? (ITEMS[p.gear.ranged].arrow ? 'bow' : 'boomerang') : null],
-      [label('y'), p.spell ? 'spell' : null],
-      [label('x'), p.quick && p.bag[p.quick] ? (ITEMS[p.quick].icon || 'potion') : null],
+      [tag('b'), p.gear.ranged ? (ITEMS[p.gear.ranged].arrow ? 'bow' : 'boomerang') : null],
+      [tag('y'), p.spell ? 'spell' : null],
+      [tag('x'), p.quick && p.bag[p.quick] ? (ITEMS[p.quick].icon || 'potion') : null],
     ];
     slots.forEach(([letter, icon], i) => {
       const x = 192 + i * 21;
       fillRect(g, x, 2, 20, 19, 'j');
       fillRect(g, x + 1, 3, 18, 17, 'Q');
-      drawText(g, letter, x + 2, 4, 'a');
+      const count = i === 2 && icon ? `${Math.min(99, p.bag[p.quick])}` : '';
+      // Two letters and a two-digit count do not both fit in the corner.
+      drawText(g, count.length > 1 ? letter.slice(0, 1) : letter, x + 2, 4, 'a');
       if (icon) g.drawImage(this.S.icons[icon], x + 8, 10);
-      if (i === 2 && icon) {
-        const n = `${Math.min(99, p.bag[p.quick])}`;
-        drawText(g, n, x + 19 - textWidth(n), 4, '9');
-      }
+      if (count) drawText(g, count, x + 19 - textWidth(count), 4, '9');
     });
 
     // The feed: the last thing that happened, numbers showing.
@@ -400,7 +411,7 @@ export class UI {
     TABS.forEach((name, i) => {
       drawText(g, name, tx, y, i === active ? 'J' : 'a');
       if (i === active) fillRect(g, tx, y + 9, textWidth(name), 1, 'J');
-      tx += textWidth(name) + 12;
+      tx += textWidth(name) + 8;
     });
   }
 
@@ -410,7 +421,7 @@ export class UI {
     const y = HUD_H + 6;
     panel(g, x, y, W - 16, H - HUD_H - 12, 'Q', 'a');
     this.drawTabs(g, x + 10, y + 7, m.tab);
-    drawText(g, '◀ ▶', W - 16 - 30, y + 7, 'a');
+    drawText(g, '◀ ▶', W - 35, y + 7, 'a');
     const cx = x + 10;
     let cy = y + 24;
     const rows = this.menuRows(m);
@@ -477,6 +488,11 @@ export class UI {
         drawText(g, s.blurb, cx + 10, cy, 'a');
         cy += 14;
       });
+    } else if (m.tab === SETTINGS_TAB) {
+      for (const line of wrap(plain(NOTES.menu), 36)) { drawText(g, line, cx, cy, '9'); cy += 10; }
+      cy += 4;
+      if ((this.t >> 4) % 2 === 0) drawText(g, '▶', cx, cy, 'J');
+      drawText(g, `${label('a')} opens them`, cx + 10, cy, 'J');
     } else {
       const active = Object.keys(QUESTS).filter((id) => p.quests[id] === 'active');
       const done = Object.keys(QUESTS).filter((id) => p.quests[id] === 'done').length;

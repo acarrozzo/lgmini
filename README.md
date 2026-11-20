@@ -16,16 +16,18 @@ npm start
 
 Then go to http://localhost:4173.
 
-| | Keyboard | Phone |
-|---|---|---|
-| Move | Arrows or WASD | Pad |
-| Swing / talk | Z | A |
-| Ranged | X | B |
-| Spell | C | Y |
-| Eat | V | X |
-| Bag | Enter | START |
-| Map | Tab | MAP |
-| Sound | M | SOUND |
+| | Keyboard | Phone | Game pad |
+|---|---|---|---|
+| Move | Arrows or WASD | Pad | Stick or d-pad |
+| Swing / talk | Z | A | A |
+| Ranged | X | B | B |
+| Spell | C | Y | Y |
+| Eat | V | X | X |
+| Bag | Enter | START | START |
+| Map | Tab | MAP | SELECT |
+| Sound | M | SOUND | |
+
+Settings is on the title screen and is the last tab in the bag. Music and sound effects have their own volume. You can put more keys on any button or take keys off. The game names its buttons after whatever you are holding, and after the letters on your pad.
 
 The game saves in your browser. It is not tied to a Light Gray RPG account.
 

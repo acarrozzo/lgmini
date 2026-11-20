@@ -2,6 +2,7 @@
 // tied to a Light Gray RPG account.
 
 import { newPlayer } from './rules.js';
+import { SETTINGS } from './data/settings.js';
 
 // ?slot=name keeps a separate save, so a test run never touches the real one.
 const slot = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('slot') : null;
@@ -42,6 +43,49 @@ export function loadPrefs() {
   try { return JSON.parse(localStorage.getItem(PREFS) || '{}') || {}; } catch { return {}; }
 }
 
-export function savePrefs(prefs) {
-  try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch { /* play on without it */ }
+export function savePrefs(data) {
+  try { localStorage.setItem(PREFS, JSON.stringify(data)); } catch { /* play on without it */ }
+}
+
+// ---------------------------------------------------------------- settings
+
+/** One setting's value made safe: what was saved if it still makes sense, else what it starts as. */
+export function cleanSetting(row, value) {
+  if (row.kind === 'level') return Number.isFinite(value) ? Math.max(0, Math.min(row.max, Math.round(value))) : row.def;
+  if (row.kind === 'toggle') return typeof value === 'boolean' ? value : row.def;
+  if (row.kind === 'pick') return row.choices.some((c) => c[0] === value) ? value : row.def;
+  return undefined;
+}
+
+/** Every saved setting, read out of what is stored. Pure. */
+export function readSettings(stored) {
+  const out = {};
+  for (const row of SETTINGS) {
+    if (row.def === undefined) continue;
+    out[row.key] = cleanSetting(row, stored ? stored[row.key] : undefined);
+  }
+  return out;
+}
+
+// What is stored (the settings, any changed keys, the best time), and the
+// settings as the game reads them. One of each, shared by everything.
+export const prefs = loadPrefs();
+export const settings = readSettings(prefs);
+
+export function setSetting(key, value) {
+  const row = SETTINGS.find((r) => r.key === key);
+  if (!row || row.def === undefined) return;
+  settings[key] = cleanSetting(row, value);
+  prefs[key] = settings[key];
+  savePrefs(prefs);
+}
+
+/** Every setting back to what it starts as. Changed keys and the best time stay. */
+export function resetSettings() {
+  for (const row of SETTINGS) {
+    if (row.def === undefined) continue;
+    settings[row.key] = row.def;
+    delete prefs[row.key];
+  }
+  savePrefs(prefs);
 }

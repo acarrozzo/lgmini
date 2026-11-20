@@ -36,21 +36,24 @@ Plain ES modules, no build step, no dependencies. Serve the folder and open `ind
 | `js/game.js` | Rooms, the hero, enemies, combat, objects, drawing the world |
 | `js/ui.js` | HUD, feed line, dialogs, bag, shop, map frame, the ending |
 | `js/map.js` | The map screen and its helpers |
+| `js/settings.js` | The Settings screen and its helpers. Needs no game, so the title screen opens it too |
 | `js/world.js` | Room adjacency, gates, and the world validator |
 | `js/rules.js` | Every number: rolls, crits, XP, gear, items, the run clock. Pure functions |
 | `js/state.js` | The save and settings, in `localStorage` |
-| `js/input.js` | Keyboard and touch, and what each button is called on each |
+| `js/input.js` | Keyboard, touch and game pad, the keys on each button, and what each button is called |
 | `js/gfx.js`, `js/font.js` | The palette, the pixel buffer, pixel text |
 | `js/art-tiles.js`, `js/art-sprites.js` | All art, drawn in code |
 | `js/audio.js`, `js/songs.js` | The chip synth and the songs, written in code |
-| `js/data/*` | Rooms, enemies, items, quests, people, shops, the ending text |
+| `js/data/*` | Rooms, enemies, items, quests, people, shops, the ending text, the Settings rows |
 
 Things to know:
 
 - The screen is 256x224 with 16x16 tiles. A room is one 16x12 screen; walking off an edge flips to the next room.
 - `js/data/rooms.js` holds the first 17 rooms drawn by hand. `js/data/rooms2.js` builds the rest from short descriptions with a seeded scatter, so a room always comes out the same.
 - Add content as data. Add an engine branch only for a new kind of thing.
-- Text that names a button uses tokens (`{a}`, `{b}`, `{x}`, `{y}`, `{start}`, `{map}`, `{back}`, `{move}`), never the letter. The game says Z on a keyboard and A on a phone.
+- Text that names a button uses tokens (`{a}`, `{b}`, `{x}`, `{y}`, `{start}`, `{map}`, `{back}`, `{move}`), never the letter. The game says Z on a keyboard and A on a phone. On a keyboard it is the first key that button has, which the player can change, so a name can be as long as "Space"; `tag()` cuts it to fit a HUD slot.
+- A new setting is a row in `js/data/settings.js`. It is saved, cleaned and reset from that row. Read it as `settings.key` from `state.js`.
+- Settings, changed keys and the best time share one stored object, `lgmini.prefs.v1`. Esc is fixed to the bag and cannot be moved, and no button can lose its last key, so no set of keys locks the player out.
 - All art uses the one palette in `gfx.js`. There are no image or sound files.
 - The save key is `lgmini.save.v1`. Do not rename it without a migration that carries an existing save forward.
 
@@ -65,7 +68,8 @@ The tests cover the rules, the world validator (every exit has a way back, every
 In a browser:
 
 - `?slot=test` uses a separate save and separate settings. Always test there. Anthony's own save and best time are under the plain address and must not be touched.
-- `?debug` adds `window.__lgmStart()` (skip the title) and `window.__lgm` (`game`, `ui`, `player`, `go(room, cx, cy)`, `give(item, n)`, `wear(item)`).
+- `?debug` adds `window.__lgmStart()` (skip the title), `window.__lgmStep(n)` (run n frames by hand) and `window.__lgm` (`game`, `ui`, `player`, `go(room, cx, cy)`, `give(item, n)`, `wear(item)`).
+- A page in a background tab gets no frames, so the game stands still and presses pile up. When checking from a hidden pane, send a key event and then call `__lgmStep`.
 - A plain static server lets the browser cache modules. After an edit, reload hard before trusting what you see.
 - Keep the dev server on port 4173. His save belongs to that address.
 
@@ -104,6 +108,11 @@ Claude's calls he has not confirmed:
 - Eight pines at Jack's farm though he allows only ten wood. Two wood a tree.
 - The achievement for finding every room is named "Been Everywhere" and pays 1000 gold. The Plane of Rebirth does not count toward it.
 - Pax's lines, the reward card, the credits, and every `DRAFT|` line.
+- Settings, built 2026-11-19 without the usual pictures first, because he said not to stop and ask. All of it is open to change: the layout of the screen, a fifth SETTINGS tab in the bag (tabs moved closer together to fit it), and a Settings line on the title screen (the title options moved up 13 pixels).
+- The settings themselves: Music and SFX sliders from 0 to 10 that start at 8, Mute, Hold to attack (off), Text speed, Screen shake, Rumble, Run clock shown or hidden, Scanlines (off), Fullscreen, Pad buttons, Keys, Defaults.
+- Hold to attack repeats the sword, the ranged weapon and the spell. It never talks, opens a chest or eats.
+- A button holds up to four keys. A key moves to the button it is given to.
+- Game pad: the bottom face button swings on Xbox and PlayStation pads, the right one on Nintendo pads, so the letter on screen is the letter on the pad. START is the bag and SELECT is the map. Shoulder buttons do nothing. Pad buttons cannot be remapped.
 
 Open:
 
