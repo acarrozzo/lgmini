@@ -148,6 +148,19 @@ export function addXp(player, amount) {
   return ups;
 }
 
+/**
+ * Hand a quest in: what it asked for is taken, it is marked done, and it pays.
+ * Returns the levels its XP added, as addXp does.
+ */
+export function finishQuest(player, id, quest) {
+  if (quest.consume && quest.need.item) removeItem(player, quest.need.item[0], quest.need.item[1]);
+  player.quests[id] = 'done';
+  const reward = quest.reward || {};
+  player.gold += reward.gold || 0;
+  for (const [slug, n] of reward.items || []) addItem(player, slug, n);
+  return addXp(player, reward.xp || 0);
+}
+
 // ------------------------------------------------------------- the run clock
 
 /** The three kings Rigel wants dead, in no order. */

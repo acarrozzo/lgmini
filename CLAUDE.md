@@ -95,6 +95,8 @@ Chosen by Anthony:
 - A run clock, a split per boss, and a best time that survives New Game.
 - The ending tells the player a reward in Light Gray RPG is not hooked up yet, to tell Anthony, and that whoever tells him gets to decide it. He wants that moment to feel good.
 - The tagline is "A bit of Light Gray RPG."
+- A quest handed in pops a card the player has to close. The room dims, QUEST COMPLETE is in big gold, and under it are the quest's name and a plate for each reward. He picked this on 2026-11-19 over a small card in the middle of the room and one the size of the speech box. Its button says "Nice" on every quest. He looked at a word per quest and chose one for all.
+- A quest finished before its giver asked for it is asked and handed in with one line, in one visit, with the giver impressed. That line is the quest's `early`.
 
 Declined, do not bring back:
 
@@ -107,7 +109,8 @@ Claude's calls he has not confirmed:
 - A crit is a roll in the top tenth of its range and doubles the damage. Enemies do not crit.
 - Eight pines at Jack's farm though he allows only ten wood. Two wood a tree.
 - The achievement for finding every room is named "Been Everywhere" and pays 1000 gold. The Plane of Rebirth does not count toward it.
-- Pax's lines, the reward card, the credits, and every `DRAFT|` line.
+- Pax's lines, the reward card, the credits, and every `DRAFT|` line. Every quest's `early` line is one: the main game has none.
+- The quest card: nothing is taken or paid until it is closed. It cannot be closed for its first half second. It replaced the "Quest done" lines that floated by. After it the giver goes on to their next quest in the same visit, so a player far ahead can get several cards in a row. A giver met for the first time still says their greeting before an `early` line. Gear on a plate says what it adds. Plates that do not fit one row go to a second.
 - Settings, built 2026-11-19 without the usual pictures first, because he said not to stop and ask. All of it is open to change: the layout of the screen, a fifth SETTINGS tab in the bag (tabs moved closer together to fit it), and a Settings line on the title screen (the title options moved up 13 pixels).
 - The settings themselves: Music and SFX sliders from 0 to 10 that start at 8, Mute, Hold to attack (off), Text speed, Screen shake, Rumble, Run clock shown or hidden, Scanlines (off), Fullscreen, Pad buttons, Keys, Defaults.
 - Hold to attack repeats the sword, the ranged weapon and the spell. It never talks, opens a chest or eats.

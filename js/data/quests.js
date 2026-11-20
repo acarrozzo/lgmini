@@ -8,6 +8,11 @@
 //   { item: [slug, n] }   hold n of it (taken on turn-in when `consume`)
 //   { kills: [slug, n] }  have killed n of it
 //   { equipped: slot }    wear something in that slot
+//
+// A quest has three lines: `remind` (the ask, and the nudge while you are on
+// it), `done` (handing it in), and `early` (you had it done before they asked:
+// the ask and the thanks in one breath). The main game has no `early` lines, so
+// every one of them is a DRAFT.
 
 export const QUESTS = {
   oldman_001: {
@@ -16,6 +21,7 @@ export const QUESTS = {
     need: { item: ['flower', 1] }, consume: true,
     remind: 'Have you found that yellow flower yet? You can find them in the flower patch to the north. Just bring me one when you have it!',
     done: 'A yellow flower! Perfect! My wife loved flowers, I will put this on her grave later tonight.',
+    early: 'DRAFT|Is that a yellow flower? Already? Perfect! My wife loved flowers, I will put this on her grave later tonight.',
     reward: { gold: 10, xp: 5 },
   },
   soldier_001: {
@@ -24,6 +30,7 @@ export const QUESTS = {
     need: { equipped: 'sword' },
     remind: 'This is so easy. Just pick up and equip a weapon. The higher the STR the better.',
     done: "Wow, you can pick up a sword. I can't believe we're giving XP for this.",
+    early: "DRAFT|I was going to say pick up and equip a weapon. You already did. I can't believe we're giving XP for this.",
     reward: { gold: 10, xp: 5 },
   },
   oldman_002: {
@@ -32,6 +39,7 @@ export const QUESTS = {
     need: { kills: ['giant-rat', 2] },
     remind: 'I got so many rats down there. Go on down and take out two of the giant ones, not the little ones.',
     done: "Excellent! Rats ain't got nothing on you. Now it's time to deal with the gator.",
+    early: "DRAFT|I got so many rats down there. I was going to ask you to take out two of the giant ones. You already did? Excellent! Rats ain't got nothing on you. Now it's time to deal with the gator.",
     reward: { gold: 15, xp: 8, items: [['cooked-meat', 5]] },
   },
   soldier_002: {
@@ -40,6 +48,7 @@ export const QUESTS = {
     need: { item: ['scorpion-tail', 5] }, consume: true,
     remind: "Still short on tails? Bring me 5 Scorpion Tails and I'll know you're ready.",
     done: "Alright Wanderer. You can swing it and you came back. That's more than most.",
+    early: "DRAFT|Next I wanted 5 Scorpion Tails. You're already carrying 5. Alright Wanderer. You can swing it and you came back before I sent you. That's more than most.",
     reward: { gold: 100, xp: 50, items: [['gold-key', 1]] },
   },
   oldman_003: {
@@ -48,6 +57,7 @@ export const QUESTS = {
     need: { kills: ['gator', 1] },
     remind: "That gator is still out there in the swamp. Head west into the marsh and deal with it when you're ready.",
     done: "Nice work Wanderer! That gator had it comin'!",
+    early: "DRAFT|That gator out in the marsh. Wait, you already dealt with it? Nice work Wanderer! That gator had it comin'!",
     reward: { gold: 30, xp: 20 },
   },
 };
@@ -125,6 +135,7 @@ Object.assign(QUESTS, {
     need: { item: ['bat-wing', 5] }, consume: true,
     remind: 'Remember, bats fly, you need a ranged weapon to hit them. Equip your boomerang and get back in there!',
     done: 'Five wings, nice haul! And remember, any enemy that flies is out of reach of a sword. Always keep a ranged weapon handy for those.',
+    early: 'DRAFT|I was going to send you into the Bat Cave for 5 Bat Wings. You already have them? Five wings, nice haul! Then you already know. Anything that flies is out of reach of a sword. Always keep a ranged weapon handy.',
     reward: { gold: 100, xp: 50, items: [['wooden-bow', 1]] },   // main game: Green Boots; the bow is his next lesson there
   },
   jack_000: {
@@ -133,6 +144,7 @@ Object.assign(QUESTS, {
     need: { item: ['goblin-cloak', 1] }, consume: true,
     remind: "Still no cloak? The Goblin Chief's hiding somewhere deep in the Bat Cave. Go find him, take the cloak off his back, and bring it here. Simple as chopping a tree!",
     done: "Well I'll be! You actually got it! The Forest Path east of here is all yours now, Wanderer. Go see what's out there.",
+    early: "DRAFT|Next job, the Goblin Chief's cloak. Hold on. Is that it in your bag? Well I'll be! You got it before I asked! The Forest Path east of here is all yours now, Wanderer. Go see what's out there.",
     reward: { gold: 300, xp: 200, items: [['battle-axe', 1]] },
   },
   grand_field: {
@@ -141,6 +153,7 @@ Object.assign(QUESTS, {
     need: { quests: ['oldman_003', 'soldier_002', 'jack_000'] },
     remind: 'The Field first.',
     done: 'The Field is safe. The Pillar noticed. Red Town and the Forest are next.',
+    early: 'DRAFT|But you already have. All of them. The Field is safe. The Pillar noticed. Red Town and the Forest are next.',
     reward: { gold: 300, xp: 200 },
   },
   warriors_000: {
@@ -149,6 +162,7 @@ Object.assign(QUESTS, {
     need: { kills: ['ogre-lieutenant', 1] },
     remind: '"The Ogre Lieutenant is still breathing. His lair is in the Forest. Come back when that\'s no longer true."',
     done: '"Then you\'re one of us." The recruiter hauls a blade off the display rack and hands it over. "Signing bonus."',
+    early: 'DRAFT|"Wait. The Ogre Lieutenant is already dead? You did that before anyone asked. Then you\'re one of us." The recruiter hauls a blade off the display rack and hands it over. "Signing bonus."',
     reward: { gold: 300, xp: 500, items: [['iron-sword', 1]] },   // main game: a bastard sword and a great sword
   },
   wizards_000: {
@@ -157,6 +171,7 @@ Object.assign(QUESTS, {
     need: { kills: ['kobold-master', 1] },
     remind: '"The Kobold Master still holds his chambers. In the Forest. Magic will serve you better than steel down there."',
     done: '"Then you are one of us." The recruiter hands you a wand with no ceremony whatsoever. "Signing bonus. The guild\'s spells are open to you."',
+    early: 'DRAFT|"The Kobold Master has already fallen? To you? Before I asked. Then you are one of us." The recruiter hands you a wand with no ceremony whatsoever. "Signing bonus. The guild\'s spells are open to you."',
     reward: { gold: 300, xp: 500, items: [['wand', 1]] },         // main game: a Wizard Staff and a Wizard Hat
   },
   ranger_001: {
@@ -165,6 +180,7 @@ Object.assign(QUESTS, {
     need: { killsAll: ['bowman', 'highwayman'] },
     remind: '"They can be found patrolling the stone path to the mountains, and one of them is standing right at the toll."',
     done: 'DRAFT|"You have indeed defeated them." The Ranger Guard steps off the road. "The forest is yours. Mind the trolls."',
+    early: 'DRAFT|"A Bowman and a Highwayman. That was going to be the job. You have already defeated them? Huh." The Ranger Guard steps off the road. "The forest is yours. Mind the trolls."',
     reward: { gold: 400, xp: 600 },
   },
   rigel_001: {
@@ -173,6 +189,7 @@ Object.assign(QUESTS, {
     need: { killsAll: ['kraken', 'troll-king', 'giant-mountain-giant'] },
     remind: '"Greed, Wrath, Pride. A king holds each."',
     done: 'You hand Rigel the Keys of Greed, Wrath and Pride. He lifts them up to the sky and the gate\'s magic pulls them right from his hand. The three keys click in unison and the gate opens. "Welcome to Star City." Camp Hero waits just west of the gate.',
+    early: 'DRAFT|Rigel stops. "You already have all three?" You hand him the Keys of Greed, Wrath and Pride. He lifts them up to the sky and the gate\'s magic pulls them right from his hand. The three keys click in unison and the gate opens. "Welcome to Star City." Camp Hero waits just west of the gate.',
     reward: { gold: 1000, xp: 1500 },
   },
 });
@@ -361,6 +378,21 @@ export function currentQuest(player, giverId) {
     return null;
   }
   return null;
+}
+
+/**
+ * What a giver has to say about their quests right now, or null:
+ *   offer   a new ask
+ *   remind  one you are still on
+ *   done    one you were sent on and can hand in
+ *   early   one you finished before they asked. It is asked and handed in at once.
+ */
+export function questBeat(player, giverId) {
+  const quest = currentQuest(player, giverId);
+  if (!quest) return null;
+  const asked = player.quests[quest] === 'active';
+  const met = questProgress(player, quest).met;
+  return { quest, kind: met ? (asked ? 'done' : 'early') : (asked ? 'remind' : 'offer') };
 }
 
 /** How far along a quest is: { have, want, met }. */

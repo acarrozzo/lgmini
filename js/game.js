@@ -7,7 +7,7 @@ import { bakeRoom, TILES, waterGlints } from './art-tiles.js';
 import { ROOMS } from './data/rooms.js';
 import { ENEMIES } from './data/enemies.js';
 import { ITEMS, statLine, countName } from './data/items.js';
-import { QUESTS, PEOPLE, currentQuest, questProgress } from './data/quests.js';
+import { QUESTS, PEOPLE, questBeat, questProgress } from './data/quests.js';
 import * as R from './rules.js';
 import { neighbor, check, edgeGate, EDGES } from './world.js';
 import { pressed, held, axis, clearInput, label, rumble } from './input.js';
@@ -621,7 +621,11 @@ export class Game {
   }
 
   gainXp(amount) {
-    const ups = R.addXp(this.p, amount);
+    this.levelUps(R.addXp(this.p, amount));
+  }
+
+  /** Say so for each level just gained. */
+  levelUps(ups) {
     for (const up of ups) {
       sfx.level();
       this.ui.toast(`LEVEL ${up.level}`, 'J');
@@ -1159,47 +1163,55 @@ export class Game {
       }
     }
 
-    const offer = (id, quiet) => {
-      p.quests[id] = 'active';
-      if (!quiet) pages.push(QUESTS[id].remind);
-      toasts.push([`New quest: ${QUESTS[id].title}`, 'J']);
-    };
+    this.questTalk(who, pages, toasts, first);
+  }
 
-    let qid = currentQuest(p, who);
-    let xp = 0;
-    if (qid && p.quests[qid] !== 'active') {
-      // The Old Man's greeting is itself the ask; everyone else says it after.
-      offer(qid, first && who === 'old_man');
-    } else if (qid) {
-      const q = QUESTS[qid];
-      const pr = questProgress(p, qid);
-      if (!pr.met) {
-        pages.push(q.need.kills || (q.need.item && q.need.item[1] > 1) ? `${q.remind} (${pr.have}/${pr.want})` : q.remind);
-      } else {
-        if (q.consume && q.need.item) R.removeItem(p, q.need.item[0], q.need.item[1]);
-        p.quests[qid] = 'done';
-        pages.push(q.done);
-        const r = q.reward || {};
-        const got = [];
-        if (r.gold) { p.gold += r.gold; got.push(`${r.gold} gold`); }
-        if (r.xp) { xp = r.xp; got.push(`${r.xp} XP`); }
-        for (const [slug, n] of r.items || []) { R.addItem(p, slug, n); got.push(countName(slug, n)); }
-        toasts.push([`Quest done: ${q.title}`, 'I']);
-        if (got.length) toasts.push([got.join('  '), '9']);
-        qid = currentQuest(p, who);
-        if (qid) offer(qid, false);
+  /**
+   * What a giver says about their quest, and what follows. A quest handed in
+   * pops a card the player has to close. After the card the giver goes on to
+   * their next quest, so one that was finished before it was asked for is asked
+   * and paid in the same visit, in one line (`early`).
+   * pages: what has been said so far this visit. again: this is after a card.
+   */
+  questTalk(who, pages, toasts, first, again = false) {
+    const p = this.p;
+    const person = PEOPLE[who];
+    const ui = this.ui;
+    const beat = questBeat(p, who);
+    const q = beat ? QUESTS[beat.quest] : null;
+    let handIn = null;
+    if (!beat) {
+      if (!again && !pages.length && person.idle) {
+        const i = p.lines[who] || 0;
+        pages.push(person.idle[i % person.idle.length]);
+        p.lines[who] = i + 1;
       }
-    } else if (!pages.length && person.idle) {
-      const i = p.lines[who] || 0;
-      pages.push(person.idle[i % person.idle.length]);
-      p.lines[who] = i + 1;
+    } else if (beat.kind === 'offer') {
+      p.quests[beat.quest] = 'active';
+      // The Old Man's greeting is itself the ask; everyone else says it after.
+      if (!(first && who === 'old_man')) pages.push(q.remind);
+      toasts.push([`New quest: ${q.title}`, 'J']);
+    } else if (beat.kind === 'remind') {
+      const pr = questProgress(p, beat.quest);
+      pages.push(q.need.kills || (q.need.item && q.need.item[1] > 1) ? `${q.remind} (${pr.have}/${pr.want})` : q.remind);
+    } else {
+      pages.push(beat.kind === 'early' ? q.early : q.done);
+      handIn = beat.quest;
     }
 
     ui.say(person.name, pages, () => {
-      if (toasts.some((t) => t[0].startsWith('Quest done'))) sfx.item();
+      if (handIn) {
+        // Nothing is taken or paid until the card is closed.
+        ui.questDone(handIn, () => {
+          this.levelUps(R.finishQuest(p, handIn, q));
+          this.rebuildSolid();       // a finished quest can take a gate out of the way
+          saveGame(p);
+          this.questTalk(who, [], toasts, false, true);
+        });
+        return;
+      }
       for (const [text, color] of toasts) ui.toast(text, color);
-      if (xp) this.gainXp(xp);
-      this.rebuildSolid();       // a finished quest can take a gate out of the way
+      this.rebuildSolid();
       saveGame(p);
       if (person.ending && !p.flags.ended) { this.finish(); return; }
       this.offerLessons(who);

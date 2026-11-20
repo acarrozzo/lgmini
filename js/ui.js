@@ -6,7 +6,7 @@
 import { W, H, HUD_H, drawText, drawTextCentered, drawTextOutlined, textWidth, wrap, panel, fillRect, makeCanvas, rng } from './gfx.js';
 import { pressed, label, tag, withKeys } from './input.js';
 import { sfx } from './audio.js';
-import { ITEMS, SLOT_LABEL, statLine } from './data/items.js';
+import { ITEMS, SLOT_LABEL, statLine, countName } from './data/items.js';
 import { QUESTS, SHOPS, ENDING, questProgress } from './data/quests.js';
 import { ENEMIES } from './data/enemies.js';
 import * as R from './rules.js';
@@ -31,6 +31,49 @@ const STAT_NOTE = {
 // The ending: when each thing on the results card arrives, in frames.
 const END = { fade: 30, title: 40, kings: 84, kingGap: 26, count: 170, land: 230, stats: 246, ready: 262 };
 const REWARD = { chest: 20, line: 54, gap: 52, open: 2 };   // open: the chest opens with this line (and is empty)
+
+const QUEST_HOLD = 30;      // frames the quest card stays up before it can be closed
+const QUEST_BUTTON = 'Nice';   // what the card's button says, on every quest
+const PLATE_GAP = 5;
+
+/** The icon for an item: its own, or the one for the slot it goes in. */
+function iconFor(item) {
+  if (item.icon) return item.icon;
+  if (item.slot === 'ranged') return item.arrow ? 'bow' : 'boomerang';
+  return item.slot || 'none';
+}
+
+/** What a quest pays, one entry per plate on its card. Gear says what it adds. */
+export function questRewards(quest) {
+  const r = quest.reward || {};
+  const out = [];
+  if (r.gold) out.push({ mark: 'coin', text: `${r.gold}`, color: 'J' });
+  if (r.xp) out.push({ mark: 'star', text: `${r.xp} XP`, color: 'I' });
+  for (const [slug, n] of r.items || []) {
+    const item = ITEMS[slug];
+    out.push({ mark: iconFor(item), text: countName(slug, n), color: '9', note: item.slot ? statLine(item) : '' });
+  }
+  return out;
+}
+
+export function plateWidth(r) {
+  return 26 + textWidth(r.text) + (r.note ? 6 + textWidth(r.note) : 0);
+}
+
+/** The plates in rows no wider than `max`, in order. One plate is never split. */
+export function plateRows(rewards, max = W - 16) {
+  const rows = [];
+  let row = [];
+  let w = 0;
+  for (const r of rewards) {
+    const pw = plateWidth(r);
+    if (row.length && w + PLATE_GAP + pw > max) { rows.push(row); row = []; w = 0; }
+    w += (row.length ? PLATE_GAP : 0) + pw;
+    row.push(r);
+  }
+  if (row.length) rows.push(row);
+  return rows;
+}
 
 const bigCache = new Map();
 /** Pixel text at a whole multiple of its size. */
@@ -114,6 +157,15 @@ export class UI {
     this.modal = { type: 'ending', page: 0, t: 0, run, best, then, stars, reward };
   }
 
+  /**
+   * A quest handed in: its name and what it pays. It stays up until the player
+   * closes it, and `then` is where the quest is actually paid.
+   */
+  questDone(id, then = null) {
+    sfx.item();
+    this.modal = { type: 'quest', id, t: 0, then };
+  }
+
   deadCard(text, cb) {
     this.modal = { type: 'dead', text, t: 0, cb };
   }
@@ -154,6 +206,10 @@ export class UI {
     } else if (m.type === 'dead') {
       m.t += 1;
       if (m.t > 70 && pressed.a) { this.modal = null; m.cb(); }
+    } else if (m.type === 'quest') {
+      m.t += 1;
+      // Not at once: a press meant for the last of the speech should not close it unread.
+      if (m.t > QUEST_HOLD && pressed.a) { sfx.coin(); this.modal = null; if (m.then) m.then(); }
     } else if (m.type === 'ending') this.updateEnding(m);
   }
 
@@ -292,6 +348,7 @@ export class UI {
     else if (m.type === 'map') drawMap(g, this, m);
     else if (m.type === 'settings') drawSettings(g, m, HUD_H + 6);
     else if (m.type === 'dead') this.drawDead(g, m);
+    else if (m.type === 'quest') this.drawQuest(g, m);
     else if (m.type === 'ending') this.drawEnding(g, m);
   }
 
@@ -640,6 +697,42 @@ export class UI {
       y += 4;
     });
     if (t >= REWARD.line + (m.reward.length - 1) * REWARD.gap + 30 && blink) drawTextCentered(g, '▶', W / 2, 206, 'J');
+  }
+
+  /** The quest card: the room dims, and under the big words sit the name and a plate per reward. */
+  drawQuest(g, m) {
+    const q = QUESTS[m.id];
+    g.globalAlpha = 0.82 * Math.min(1, m.t / 10);
+    fillRect(g, 0, HUD_H, W, H - HUD_H, 'q');
+    g.globalAlpha = 1;
+    if (m.t < 6) return;
+    const rows = plateRows(questRewards(q));
+    const y = HUD_H + 34 - (rows.length - 1) * 11;
+    const head = big('QUEST COMPLETE', 2, 'J');
+    const hx = Math.round((W - head.width) / 2);
+    g.drawImage(big('QUEST COMPLETE', 2, 'y'), hx + 1, y + 1);
+    g.drawImage(head, hx, y);
+    fillRect(g, hx, y + 21, head.width - 2, 1, 'j');
+    drawTextCentered(g, q.title, W / 2, y + 30, '9');
+    rows.forEach((row, i) => {
+      const total = row.reduce((n, r) => n + plateWidth(r), 0) + (row.length - 1) * PLATE_GAP;
+      let x = Math.round((W - total) / 2);
+      const py = y + 50 + i * 22;
+      for (const r of row) {
+        const w = plateWidth(r);
+        panel(g, x, py, w, 18, 'Q', 'j');
+        if (r.mark === 'coin') g.drawImage(this.S.fx.coin, x + 6, py + 4);
+        else if (r.mark === 'star') drawText(g, '★', x + 7, py + 5, 'I');
+        else g.drawImage(this.S.icons[r.mark] || this.S.icons.none, x + 5, py + 3);
+        drawText(g, r.text, x + 19, py + 5, r.color);
+        if (r.note) drawText(g, r.note, x + 25 + textWidth(r.text), py + 5, 'I');
+        x += w + PLATE_GAP;
+      }
+    });
+    // The button shows up when a press will count.
+    if (m.t > QUEST_HOLD && (this.t >> 4) % 2 === 0) {
+      drawTextCentered(g, `▶ ${QUEST_BUTTON}`, W / 2, y + 66 + rows.length * 22, 'J');
+    }
   }
 
   drawDead(g, m) {

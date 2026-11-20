@@ -127,7 +127,79 @@ test('mini: the Old Man and the Soldier hand out their quests in order', async (
   R.takeGear(p, 'training-sword');
   assert.equal(questProgress(p, 'soldier_001').met, true);
   assert.equal(currentQuest(p, 'shaman'), null, 'the Shaman has no quests');
-  for (const q of Object.values(QUESTS)) assert.ok(q.remind && q.done && q.title);
+  for (const q of Object.values(QUESTS)) assert.ok(q.remind && q.done && q.early && q.title);
+});
+
+test('mini: a giver asks, reminds, and takes a quest, and takes one done early in a single breath', async () => {
+  const R = await load('rules.js');
+  const { questBeat } = await load('data/quests.js');
+  const p = R.newPlayer();
+  assert.deepEqual(questBeat(p, 'old_man'), { quest: 'oldman_001', kind: 'offer' });
+  p.quests.oldman_001 = 'active';
+  assert.equal(questBeat(p, 'old_man').kind, 'remind');
+  R.addItem(p, 'flower', 1);
+  assert.equal(questBeat(p, 'old_man').kind, 'done');
+  // Never asked, already done: one line asks and thanks.
+  const q = R.newPlayer();
+  R.addItem(q, 'flower', 1);
+  assert.deepEqual(questBeat(q, 'old_man'), { quest: 'oldman_001', kind: 'early' });
+  // The next quest in a chain can be early too, so one visit can hand in several.
+  q.quests.oldman_001 = 'done';
+  q.kills['giant-rat'] = 2;
+  assert.deepEqual(questBeat(q, 'old_man'), { quest: 'oldman_002', kind: 'early' });
+  q.quests.oldman_002 = 'done';
+  assert.deepEqual(questBeat(q, 'old_man'), { quest: 'oldman_003', kind: 'offer' });
+  assert.equal(questBeat(q, 'shaman'), null, 'nothing to say about quests');
+});
+
+test('mini: handing a quest in takes what it asked for and pays what it promised', async () => {
+  const R = await load('rules.js');
+  const { QUESTS, currentQuest } = await load('data/quests.js');
+  const p = R.newPlayer();
+  R.addItem(p, 'scorpion-tail', 7);
+  p.quests.soldier_001 = 'done';
+  p.quests.soldier_002 = 'active';
+  const ups = R.finishQuest(p, 'soldier_002', QUESTS.soldier_002);
+  assert.equal(p.quests.soldier_002, 'done');
+  assert.equal(p.bag['scorpion-tail'], 2, 'five tails are taken, the rest are yours');
+  assert.equal(p.gold, 100);
+  assert.equal(p.xp, 50);
+  assert.equal(p.bag['gold-key'], 1);
+  assert.deepEqual(ups.map((u) => u.level), [2], 'the XP is added, and the levels it gave come back');
+  assert.equal(currentQuest(p, 'young_soldier'), null);
+  // A kill quest takes nothing; gear it pays is worn when it is better.
+  const j = R.newPlayer();
+  R.finishQuest(j, 'jack_001', { ...QUESTS.jack_001, consume: false });
+  assert.equal(j.gear.ranged, 'wooden-bow');
+});
+
+test('mini: the quest card has a plate for everything a quest pays, and they fit the screen', async () => {
+  const U = await load('ui.js');
+  const { QUESTS } = await load('data/quests.js');
+  const { GLYPHS } = await load('font.js');
+  const { W } = await load('gfx.js');
+  const { plain } = await load('world.js');
+  assert.deepEqual(U.questRewards(QUESTS.jack_001), [
+    { mark: 'coin', text: '100', color: 'J' },
+    { mark: 'star', text: '50 XP', color: 'I' },
+    { mark: 'bow', text: 'Wooden Bow', color: '9', note: '+8 DEX' },
+  ]);
+  assert.equal(U.questRewards(QUESTS.oldman_002)[2].text, '5 Cooked Meat');
+  for (const [id, q] of Object.entries(QUESTS)) {
+    const rewards = U.questRewards(q);
+    const rows = U.plateRows(rewards);
+    assert.equal(rows.flat().length, rewards.length, `${id} lost a plate`);
+    assert.ok(rows.length >= 1 && rows.length <= 2, `${id} needs ${rows.length} rows of plates`);
+    for (const row of rows) {
+      const width = row.reduce((n, r) => n + U.plateWidth(r), 0) + (row.length - 1) * 5;
+      assert.ok(width <= W - 16, `${id} has a row of plates ${width} wide`);
+    }
+    assert.ok(q.title.length * 6 <= W - 16, `${id} has a title too long for the card`);
+    for (const ch of plain(q.early)) assert.ok(GLYPHS[ch] !== undefined, `no glyph for "${ch}" in: ${q.early}`);
+  }
+  // Too many for one row: they wrap, in order, and none is split.
+  const many = [1, 2, 3, 4].map((n) => ({ mark: 'key', text: `Reward number ${n}`, color: '9' }));
+  assert.deepEqual(U.plateRows(many).map((r) => r.length), [2, 2]);
 });
 
 test('mini: gates read the same conditions the rooms declare', async () => {
@@ -341,7 +413,7 @@ test('mini: no text in the data names a pad button outright', async () => {
   const bad = /\b[ABXY] (swings|throws|casts|eats|talks|closes|buys|uses|opens)\b|\bSTART (is|opens|closes)\b/;
   const lines = [];
   for (const room of Object.values(ROOMS)) for (const t of room.things || []) lines.push(...[t.text, t.full, t.msg, t.ask, t.locked, t.noTool].flat().filter(Boolean));
-  for (const q of Object.values(QUESTS)) lines.push(q.remind, q.done, q.objective);
+  for (const q of Object.values(QUESTS)) lines.push(q.remind, q.done, q.early, q.objective);
   for (const person of Object.values(PEOPLE)) lines.push(person.greeting, person.locked, ...(person.idle || []));
   lines.push(...ENDING.reached, ...ENDING.reward, ...ENDING.credits, ENDING.untimed);
   for (const line of lines.filter(Boolean)) assert.ok(!bad.test(line), `names a button outright: ${line}`);
