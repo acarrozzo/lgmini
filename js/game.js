@@ -2,9 +2,9 @@
 // lives there, and every roll. Nothing here decides a number on its own; the
 // dice are in rules.js and the content is in data/.
 
-import { W, TILE, COLS, ROWS, HUD_H, H, drawText, drawTextOutlined, textWidth, fillRect } from './gfx.js';
-import { bakeRoom, TILES, waterGlints } from './art-tiles.js';
-import { bladeLength } from './art-sprites.js';
+import { W, TILE, COLS, ROWS, HUD_H, H, PAL, makeCanvas, drawText, drawTextOutlined, textWidth, fillRect } from './gfx.js';
+import { bakeRoom, TILES } from './art-tiles.js';
+import { bladeLength, LOOKS } from './art-sprites.js';
 import { ROOMS } from './data/rooms.js';
 import { ENEMIES } from './data/enemies.js';
 import { ITEMS, statLine, countName } from './data/items.js';
@@ -15,6 +15,9 @@ import { pressed, held, axis, clearInput, label, rumble } from './input.js';
 import { sfx, playSong } from './audio.js';
 import { saveGame, settings } from './state.js';
 import { foundEverything, roomsFound, EVERYWHERE } from './map.js';
+import { regionOf, HOURS, LIGHTS, LANTERN, SHOT_LIGHTS, BOSS_LIGHT } from './data/regions.js';
+import { Air, drawWater, drawTrees, drawFlowers, drawBlade } from './weather.js';
+import { lightFrame, needsLight } from './light.js';
 
 const FIELD_H = ROWS * TILE;
 const SPEED = 1.25;
@@ -32,6 +35,10 @@ const DIRV = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
 const rnd = (n) => Math.floor(Math.random() * n);
 const CLASH_SETTLE = 6;   // frames the dice tumble before they show what was rolled
+// A hit holds the whole game still for a few frames, so it lands. Frames for each kind.
+const HOLD = { block: 1, hit: 3, crit: 5, kill: 7, hurt: 4 };
+const LATCH = ['a', 'b', 'x', 'y', 'start', 'map'];   // a press made during a hold is kept for the frame after it
+const ONE = [1, 1, 1];
 
 /** The feed line for one of your own hits: what hit, both rolls, what came of it. */
 function rollFeed(verb, verbColor, name, roll, color) {
@@ -50,8 +57,10 @@ export class Game {
     this.p = player;
     this.maps = new Map();    // room id -> its rows this session (bushes get cut)
     this.bakes = new Map();   // room id -> painted canvases
-    this.glints = waterGlints();
-    this.hero = { x: 0, y: 0, dir: 'down', step: 0, swing: 0, hits: new Set(), inv: 0, kx: 0, ky: 0, kt: 0, cdY: 0, cdB: 0, boom: false, onWarp: false };
+    // The field is drawn off screen first, so light can be laid over it before the dice and the HUD go on.
+    this.field = makeCanvas(W, FIELD_H);
+    this.fg = this.field.getContext('2d', { willReadFrequently: true });
+    this.hero = { x: 0, y: 0, dir: 'down', step: 0, idle: 0, swing: 0, hits: new Set(), inv: 0, kx: 0, ky: 0, kt: 0, cdY: 0, cdB: 0, boom: false, onWarp: false };
     this.canSail = false;
     this.mobs = [];
     this.shots = [];
@@ -64,6 +73,18 @@ export class Game {
     this.slide = null;
     this.fade = null;
     this.t = 0;
+    // Only for the eye, none of it saved: the clock the weather runs on, the
+    // frames a hit is holding, and what a hit or a footstep leaves behind.
+    this.vt = 0;
+    this.freeze = 0;
+    this.frozen = false;
+    this.latched = {};
+    this.kick = null;
+    this.bits = [];
+    this.prints = [];
+    this.region = regionOf(null);
+    this.air = null;
+    this.pixels = new Map();   // sprite -> the pixels it is made of, for when it comes apart
   }
 
   // ---------------------------------------------------------------- rooms
@@ -90,23 +111,23 @@ export class Game {
     return !!((d.hideWhenHeld && R.hasItem(this.p, d.item)) || (d.gone && check(this.p, d.gone)));
   }
 
-  setRoom(id, things = null) {
+  /** air: the room's weather, when it was already running as the room slid in. */
+  setRoom(id, things = null, air = null) {
     const room = ROOMS[id];
     this.roomId = id;
     this.room = room;
     this.map = this.mapOf(id);
     this.bake = this.bakeOf(id);
     this.things = things || this.makeThings(id);
+    this.region = regionOf(room);
+    this.air = air || new Air(this.map, this.bake, this.region);
+    this.prints = [];
     this.mobs = [];
     this.shots = [];
     this.clashes = [];
     this.hero.boom = false;
     this.canSail = R.hasItem(this.p, 'wooden-boat');
     this.rebuildSolid();
-    this.waterCells = [];
-    for (let cy = 0; cy < ROWS; cy++) {
-      for (let cx = 0; cx < COLS; cx++) if ((TILES[this.map[cy][cx]] || {}).water) this.waterCells.push([cx, cy]);
-    }
     this.p.room = id;
     this.fresh = !this.p.seen[id];     // the first time here: it goes on the map
     this.p.seen[id] = true;
@@ -281,7 +302,50 @@ export class Game {
 
   // ---------------------------------------------------------------- update
 
+  /**
+   * The part of a frame that is only for the eye: wind, water, the air, dust,
+   * what a hit throws off. It runs every frame, while people talk too, and it
+   * stops with everything else for the few frames a hit holds.
+   */
+  animate() {
+    if (this.freeze > 0) { this.freeze -= 1; this.frozen = true; return; }
+    this.frozen = false;
+    this.vt += 1;
+    if (this.kick && --this.kick.t <= 0) this.kick = null;
+    const h = this.hero;
+    h.idle = h.step === 0 && h.swing <= 0 && h.kt <= 0 ? h.idle + 1 : 0;
+    if (this.air) this.air.step(this.vt);
+    if (this.slide) this.slide.toAir.step(this.vt);
+    for (const q of this.prints) q.t += 1;
+    if (this.prints.length) this.prints = this.prints.filter((q) => q.t < 260);
+    for (const q of this.bits) {
+      q.t += 1;
+      if (q.kind === 'coin' && q.t > 38) {
+        // It hopped out and sat a moment. Now it comes to you.
+        const dx = h.x + 8 - q.x;
+        const dy = h.y + 12 - q.y;
+        const far = Math.hypot(dx, dy) || 1;
+        if (far < 6) { q.t = q.life; continue; }
+        const sp = Math.min(far, 2 + (q.t - 38) * 0.25);
+        q.x += (dx / far) * sp; q.y += (dy / far) * sp;
+        continue;
+      }
+      q.x += q.vx; q.y += q.vy; q.vy += q.g || 0;
+      if (q.drag) { q.vx *= q.drag; q.vy *= q.drag; }
+      if (q.floor !== undefined && q.y > q.floor) { q.y = q.floor; q.vy *= -0.45; q.vx *= 0.6; if (Math.abs(q.vy) < 0.5) q.vy = 0; }
+    }
+    if (this.bits.length) this.bits = this.bits.filter((q) => q.t < q.life);
+  }
+
+  /** Hold the frame, if Settings allows it. The longest hold asked for wins. */
+  hold(frames) {
+    if (settings.hitstop) this.freeze = Math.max(this.freeze, frames);
+  }
+
   update() {
+    // A hit is holding the frame. Whatever is pressed meanwhile is kept for the frame after.
+    if (this.frozen) { for (const b of LATCH) if (pressed[b]) this.latched[b] = true; return undefined; }
+    for (const b of LATCH) if (this.latched[b]) { pressed[b] = true; this.latched[b] = false; }
     this.t += 1;
     if (this.shake > 0) this.shake -= 1;
     if (this.mode === 'slide') return this.updateSlide();
@@ -338,6 +402,7 @@ export class Game {
         this.moveHero(a.x * s, 0);
         this.moveHero(0, a.y * s);
         h.step += 1;
+        if (h.step % 9 === 0) this.footstep();
       } else {
         h.step = 0;
       }
@@ -391,6 +456,26 @@ export class Game {
     this.startFade(() => this.enterRoom(warp.to, warp.cx, warp.cy, warp.dir || 'down'));
   }
 
+  /** Feet leave something behind: dust on a path, a print in sand or snow. */
+  footstep() {
+    const h = this.hero;
+    const cx = Math.floor((h.x + 8) / TILE);
+    const cy = Math.floor((h.y + 13) / TILE);
+    if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS || this.solid[cy * COLS + cx] === 2) return;
+    const kind = (TILES[this.map[cy][cx]] || TILES['.']).kind;
+    const [dx, dy] = DIRV[h.dir];
+    const th = this.bake.th;
+    if (kind === 'sand' || (this.region.prints && kind === 'ground')) {
+      const side = (h.step / 9) & 1;      // left foot, right foot
+      this.prints.push({
+        x: Math.round(h.x + 6 + (dx ? 0 : side * 3)), y: Math.round(h.y + 14 + (dx ? side * 2 - 1 : 0)),
+        t: 0, color: kind === 'sand' ? th.sandDark : th.groundDark,
+      });
+    } else if (kind === 'path' || (this.region.dusty && kind === 'ground')) {
+      this.bits.push({ kind: 'dust', x: h.x + 8 - dx * 5, y: h.y + 15 - (dy > 0 ? 3 : 0), vx: 0, vy: 0, t: 0, life: 16, color: kind === 'path' ? th.pathLight : '6' });
+    }
+  }
+
   /** Step the hero off a stair they may not use. */
   pushOff(warp) {
     const h = this.hero;
@@ -418,6 +503,7 @@ export class Game {
     this.slide = {
       edge, t: 0, T: 26, toId: nb,
       toBake: this.bakeOf(nb), toThings: this.makeThings(nb),
+      toRegion: regionOf(ROOMS[nb]), toAir: new Air(this.mapOf(nb), this.bakeOf(nb), regionOf(ROOMS[nb])),
       nx: e.dx < 0 ? W - 14 : e.dx > 0 ? -2 : h.x,
       ny: e.dy < 0 ? FIELD_H - 18 : e.dy > 0 ? -6 : h.y,
     };
@@ -433,7 +519,7 @@ export class Game {
     s.t += 1;
     this.hero.step += 1;
     if (s.t < s.T) return;
-    this.setRoom(s.toId, s.toThings);
+    this.setRoom(s.toId, s.toThings, s.toAir);
     this.hero.x = s.nx;
     this.hero.y = s.ny;
     this.slide = null;
@@ -521,8 +607,9 @@ export class Game {
   // ------------------------------------------------------- hurting things
 
   /** delay: frames to wait before it shows, so a number can land after its dice. */
-  float(x, y, text, color, delay = 0) {
-    this.floats.push({ x, y, text, color, t: -delay });
+  /** hop: the number jumps as it comes out, the way a hit's number does. */
+  float(x, y, text, color, delay = 0, hop = false) {
+    this.floats.push({ x, y, text, color, t: -delay, hop });
   }
 
   /**
@@ -548,40 +635,106 @@ export class Game {
     const fx = m.x + m.spr.w / 2 - 3;
     const wait = roll ? CLASH_SETTLE : 0;
     if (roll) this.clash(m.x + m.spr.w / 2, m.y - 16, roll, colorA);
+    const crit = !!(roll && roll.crit);
+    this.impact(m, dir, dmg, crit);
     if (dmg <= 0) {
       sfx.block();
-      this.float(fx, m.y - 4, '0', '%', wait);
+      this.float(fx, m.y - 4, '0', '%', wait, true);
       m.stun = 5;
       const nudge = m.def.ai === 'turret' ? 0 : 1.2;
       m.kx = dir[0] * nudge; m.ky = dir[1] * nudge;
       return;
     }
-    const crit = !!(roll && roll.crit);
     if (crit) {
       sfx.crit();
       this.shake = 8;
       buzz(70, 0.5);
       this.float(fx - 9, m.y - 27, 'CRIT', '$', wait);
     } else sfx.hit();
-    this.float(fx - (dmg > 9 ? 3 : 0), m.y - 4, `${dmg}`, crit ? '$' : '8', wait);
+    this.float(fx - (dmg > 9 ? 3 : 0), m.y - 4, `${dmg}`, crit ? '$' : '8', wait, true);
     m.hp -= dmg;
     m.stun = m.def.boss ? 6 : 12;
     const push = m.def.ai === 'turret' ? 0 : m.def.boss ? 1 : 2.6;
     m.kx = dir[0] * push; m.ky = dir[1] * push;
     if (m.state === 'windup') m.state = 'stalk';
-    if (m.hp <= 0) this.killMob(m);
+    if (m.hp <= 0) this.killMob(m, dir);
   }
 
-  killMob(m) {
+  /** Where a hit lands: a spark, a few streaks the way the blow went, and a held frame. */
+  impact(m, dir, dmg, crit) {
+    const w = m.spr.w;
+    const h = m.spr.h;
+    const x = m.x + w / 2 - dir[0] * (w / 2 - 3);
+    const y = m.y + h / 2 - dir[1] * (h / 2 - 3);
+    this.bits.push({ kind: 'spark', x: Math.round(x), y: Math.round(y), vx: 0, vy: 0, t: 0, life: 9, crit });
+    for (let i = 0; i < (crit ? 9 : 5); i++) {
+      this.bits.push({
+        kind: 'streak', x, y, t: 0, life: 7 + rnd(6), drag: 0.86, color: crit ? '$' : i % 2 ? '8' : 'l',
+        vx: dir[0] * (1.4 + Math.random() * 1.6) + (Math.random() - 0.5) * 1.4,
+        vy: dir[1] * (1.4 + Math.random() * 1.6) + (Math.random() - 0.5) * 1.4,
+      });
+    }
+    this.hold(dmg > 0 ? (crit ? HOLD.crit : HOLD.hit) : HOLD.block);
+    if (dmg > 0) this.kick = { dx: dir[0], dy: dir[1], t: 4 };
+  }
+
+  /** The pixels a sprite is made of: [x, y, color, size]. Big sprites are taken two pixels at a time. */
+  pixelsOf(canvas) {
+    let list = this.pixels.get(canvas);
+    if (list) return list;
+    const w = canvas.width;
+    const h = canvas.height;
+    const d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    const size = w > 24 ? 2 : 1;
+    list = [];
+    for (let y = 0; y < h; y += size) {
+      for (let x = 0; x < w; x += size) {
+        const i = (y * w + x) * 4;
+        if (d[i + 3] > 0) list.push([x, y, `rgb(${d[i]},${d[i + 1]},${d[i + 2]})`, size]);
+      }
+    }
+    this.pixels.set(canvas, list);
+    return list;
+  }
+
+  /** A dead enemy comes apart into the pixels it was drawn with. */
+  shatter(m, dir) {
+    const frame = (m.face > 0 ? m.spr.right : m.spr.left)[(m.anim >> 3) & 1];
+    const w = m.spr.w;
+    const h = m.spr.h;
+    for (const [px, py, color, size] of this.pixelsOf(frame)) {
+      this.bits.push({
+        kind: 'shard', x: m.x + px, y: m.y + py, size, color, t: 0, life: 16 + rnd(22), g: 0.085,
+        vx: (px - w / 2) * 0.11 + (Math.random() - 0.5) * 0.7 + dir[0] * 0.9,
+        vy: (py - h / 2) * 0.1 - Math.random() * 1.1 - 0.3 + dir[1] * 0.5,
+      });
+    }
+  }
+
+  /** Gold hops out of what dropped it. The gold is already yours; this is only the sight of it. */
+  spill(m, gold) {
+    const n = Math.min(4, 1 + Math.floor(gold / 6));
+    for (let i = 0; i < n; i++) {
+      this.bits.push({
+        kind: 'coin', x: m.x + m.spr.w / 2, y: m.y + m.spr.h - 4, t: 0, life: 110, g: 0.17,
+        vx: (Math.random() - 0.5) * 1.8, vy: -2.2 - Math.random() * 0.9, floor: m.y + m.spr.h - 1 + rnd(5),
+      });
+    }
+  }
+
+  /** dir: the way the blow that did it was going. */
+  killMob(m, dir = [0, -1]) {
     const p = this.p;
     const d = m.def;
     this.mobs = this.mobs.filter((o) => o !== m);
     sfx.kill();
-    this.parts.push({ poof: true, x: m.x + m.spr.w / 2 - 8, y: m.y + m.spr.h / 2 - 8, vx: 0, vy: 0, t: 0, life: 15 });
+    this.shatter(m, dir);
+    this.hold(HOLD.kill);
 
     const xp = R.enemyXp(d.level, d.boss);
     const gold = R.rand(d.gold[0], d.gold[1]);
     p.gold += gold;
+    if (gold) this.spill(m, gold);
     p.kills[m.slug] = (p.kills[m.slug] || 0) + 1;
     const got = [];
     for (const [slug, chance] of d.drops || []) {
@@ -671,7 +824,8 @@ export class Game {
     }
     sfx.hurt();
     buzz(140, 0.8);
-    this.float(h.x + 5, h.y - 6, `${hit.dmg}`, '@', CLASH_SETTLE);
+    this.hold(HOLD.hurt);
+    this.float(h.x + 5, h.y - 6, `${hit.dmg}`, '@', CLASH_SETTLE, true);
     p.hp = Math.max(0, p.hp - hit.dmg);
     h.inv = 50;
     h.kx = dx * 3; h.ky = dy * 3; h.kt = 10;
@@ -1288,13 +1442,14 @@ export class Game {
       const dy = h.y + 4 - th.cy * TILE;
       let dir = 'down';
       if (!d.silent && Math.hypot(dx, dy) < 44) dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+      th.face = dir;
       return this.S.people[look][dir][0];
     }
     if (th.t === 'chop') return th.cut ? T.pineStump : T.pine;
     if (d.heldSprite && R.hasItem(this.p, d.item)) return T[d.heldSprite];
-    if (th.t === 'cook' || d.sprite === 'fire') return (this.t >> 3) % 2 ? T.fire : T.fire2;
+    if (th.t === 'cook' || d.sprite === 'fire') return (this.vt >> 3) % 2 ? T.fire : T.fire2;
     const spr = T[d.sprite] || T.sign;
-    return Array.isArray(spr) ? spr[(this.t >> 3) % spr.length] : spr;
+    return Array.isArray(spr) ? spr[(this.vt >> 3) % spr.length] : spr;
   }
 
   drawThings(g, things, ox, oy, list) {
@@ -1303,9 +1458,41 @@ export class Game {
       const spr = this.thingSprite(th);
       const x = ox + th.cx * TILE + Math.round((th.w * TILE - spr.width) / 2);
       const y = oy + (th.cy + th.h) * TILE - spr.height;
-      if (list) list.push({ z: (th.cy + th.h) * TILE - (th.solid ? 0 : 14), draw: () => g.drawImage(spr, x, y) });
-      else g.drawImage(spr, x, y);
+      // People stand on a shadow, breathe and blink. Everything else is a picture.
+      const paint = th.t !== 'npc' ? () => g.drawImage(spr, x, y) : () => {
+        this.shadow(g, x, y);
+        const look = th.def.look || PEOPLE[th.def.who].look;
+        this.drawPerson(g, spr, x, y, th.face || 'down', LOOKS[look].F, this.vt + th.cx * 31 + th.cy * 17);
+      };
+      if (list) list.push({ z: (th.cy + th.h) * TILE - (th.solid ? 0 : 14), draw: paint });
+      else paint();
     }
+  }
+
+  /** The small dark oval under anything that stands on the ground. size 2 is for the doubled sprites. */
+  shadow(g, x, y, size = 1) {
+    const was = g.globalAlpha;
+    g.globalAlpha = was * 0.3;
+    fillRect(g, x + 4 * size, y + 14 * size - 1, 8 * size, size, '0');
+    fillRect(g, x + 3 * size, y + 15 * size - 1, 10 * size, size, '0');
+    fillRect(g, x + 4 * size, y + 16 * size - 1, 8 * size, size, '0');
+    g.globalAlpha = was;
+  }
+
+  /**
+   * A person standing still. Every so often they breathe out, which sinks them
+   * a pixel onto their legs, and they blink. clock: frames, from anywhere.
+   */
+  drawPerson(g, spr, x, y, dir, skin, clock) {
+    const out = clock % 100 >= 58;
+    if (out) {
+      g.drawImage(spr, 0, 13, 16, 3, x, y + 13, 16, 3);
+      g.drawImage(spr, 0, 0, 16, 13, x, y + 1, 16, 13);
+    } else g.drawImage(spr, x, y);
+    if ((clock + 120) % 200 >= 7 || dir === 'up') return;
+    const ey = y + 6 + (out ? 1 : 0);
+    if (dir === 'down') { fillRect(g, x + 6, ey, 1, 1, skin); fillRect(g, x + 9, ey, 1, 1, skin); }
+    else fillRect(g, x + (dir === 'right' ? 10 : 5), ey, 1, 1, skin);
   }
 
   drawHero(g, x, y) {
@@ -1316,6 +1503,10 @@ export class Game {
     const body = frames[h.swing > 0 ? 1 : (h.step >> 3) & 3];
     const armed = !!this.p.gear.sword || !!h.tool;
     const f = SWING_T - h.swing;
+    const cell = Math.max(0, Math.min(ROWS - 1, Math.floor((h.y + 12) / TILE))) * COLS +
+      Math.max(0, Math.min(COLS - 1, Math.floor((h.x + 8) / TILE)));
+    const afloat = this.solid[cell] === 2 && this.mode !== 'slide';
+    if (!afloat) this.shadow(g, x, y);      // under the feet, which stay put when the body leans into a swing
     if (h.swing > 0) {
       const lean = SWING_LEAN[f] || 0;
       x += DIRV[h.dir][0] * lean;
@@ -1341,11 +1532,11 @@ export class Game {
       const blade = this.S.fx.blade(name, at);
       g.drawImage(blade, hx - (blade.width >> 1), hy - (blade.height >> 1));
     };
-    const cell = Math.max(0, Math.min(ROWS - 1, Math.floor((h.y + 12) / TILE))) * COLS +
-      Math.max(0, Math.min(COLS - 1, Math.floor((h.x + 8) / TILE)));
-    if (this.solid[cell] === 2 && this.mode !== 'slide') g.drawImage(this.S.things.boat, x - 3, y + 9);
+    if (afloat) g.drawImage(this.S.things.boat, x - 3, y + 9);
     if (h.dir === 'up') drawSword();
-    g.drawImage(body, x, y);
+    const still = h.swing <= 0 && h.step === 0 && this.mode !== 'dead';
+    if (still) this.drawPerson(g, body, x, y, h.dir, LOOKS.hero.F, h.idle);
+    else g.drawImage(body, x, y);
     if (h.dir !== 'up') drawSword();
   }
 
@@ -1361,6 +1552,9 @@ export class Game {
       g.globalAlpha = 0.3;
       fillRect(g, x + m.spr.w / 2 - 5, y + m.spr.h - 2, 10, 3, '0');
       g.globalAlpha = 1;
+    } else if (m.mode === 'walk') {
+      const size = m.spr.h / 16;
+      this.shadow(g, Math.round(m.x + (m.spr.w - 16 * size) / 2), y, size);
     }
     g.drawImage(set[i], x, y + lift);
     if (m.hp < m.def.hp && !m.def.boss) {
@@ -1393,58 +1587,198 @@ export class Game {
     if (!rolling && c.t < CLASH_SETTLE + 4) fillRect(g, c.x - 1, y + 1, 2, 7, '8');   // the moment they meet
   }
 
-  drawRoomLayer(g, bake, things, ox, oy, live) {
-    g.drawImage(bake.bg, ox, oy);
-    if (!live) { this.drawThings(g, things, ox, oy, null); return; }
-    const frame = this.t >> 4;
-    for (const [cx, cy] of this.waterCells) g.drawImage(this.glints[(frame + cx * 3 + cy) & 3], ox + cx * TILE, oy + cy * TILE);
+  /**
+   * One room's ground: its tiles, its water, what lies flat on it and its
+   * trees. L is a room on screen: { bake, things, air, region, ox, oy, live }.
+   * Two are on screen while one slides out and the next slides in.
+   */
+  drawFloor(g, L) {
+    const t = this.vt;
+    const windy = !!L.region.wind;
+    g.drawImage(L.bake.bg, L.ox, L.oy);
+    drawWater(g, L.bake, t, L.ox, L.oy);
+    if (L.live) {
+      for (const q of this.prints) {
+        g.globalAlpha = q.t < 170 ? 0.75 : 0.75 * (1 - (q.t - 170) / 90);
+        fillRect(g, q.x, q.y, 2, 1, q.color);
+      }
+      g.globalAlpha = 1;
+    }
+    L.air.draw(g, 'ground', t, L.ox, L.oy);
+    drawFlowers(g, L.bake, t, windy, L.ox, L.oy);
+    drawTrees(g, L.bake, t, windy, L.ox, L.oy, false);
+  }
+
+  /** What a hit or a step threw off. Dust goes under the light. Sparks, shards and coins go over it. */
+  drawBits(g, bright) {
+    for (const q of this.bits) {
+      if ((q.kind === 'dust') === bright) continue;
+      if (q.kind === 'dust') {
+        const r = q.t / 4;
+        g.globalAlpha = q.t < 10 ? 0.85 : 0.85 * (1 - (q.t - 10) / 6);
+        fillRect(g, q.x - 1 - r, q.y - r * 0.6, 1, 1, q.color);
+        fillRect(g, q.x + 1 + r, q.y - 1 - r * 0.5, 1, 1, q.color);
+        if (q.t > 4) fillRect(g, q.x, q.y - 2 - r, 1, 1, q.color);
+      } else if (q.kind === 'shard') {
+        g.globalAlpha = q.t > q.life - 6 ? (q.life - q.t) / 6 : 1;
+        g.fillStyle = q.t < 3 ? PAL['8'] : q.color;     // it goes off white, then in its own colors
+        g.fillRect(Math.round(q.x), Math.round(q.y), q.size, q.size);
+      } else if (q.kind === 'streak') {
+        g.globalAlpha = q.t > q.life - 4 ? (q.life - q.t) / 4 : 1;
+        fillRect(g, q.x, q.y, 1, 1, q.color);
+      } else if (q.kind === 'coin') {
+        g.drawImage(this.S.fx.coin, Math.round(q.x - 4), Math.round(q.y - 8));
+      } else if (q.kind === 'spark') {
+        const c = q.crit ? '$' : '8';
+        if (q.t < 3) {
+          fillRect(g, q.x - 4, q.y, 9, 1, c);
+          fillRect(g, q.x, q.y - 4, 1, 9, c);
+          fillRect(g, q.x - 1, q.y - 1, 3, 3, 'l');
+        } else {
+          const r = q.t - 1;
+          fillRect(g, q.x - r, q.y - r, 1, 1, c); fillRect(g, q.x + r, q.y - r, 1, 1, c);
+          fillRect(g, q.x - r, q.y + r, 1, 1, c); fillRect(g, q.x + r, q.y + r, 1, 1, c);
+          if (q.t < 6) fillRect(g, q.x, q.y, 1, 1, 'l');
+        }
+      }
+      g.globalAlpha = 1;
+    }
+  }
+
+  /**
+   * What the light should do this frame, or null when Settings has it off.
+   * layers: the rooms on screen. k: how far a slide has gone, 0 to 1, so the
+   * hour of one room turns into the hour of the next. heroAt: where the hero is drawn.
+   */
+  lightSpec(layers, k, heroAt) {
+    if (!settings.light) return null;
+    const a = layers[0].region;
+    const b = layers.length > 1 ? layers[1].region : a;
+    const mix = (va, vb) => va + (vb - va) * k;
+    const dimOf = (rg) => rg.dark || HOURS[rg.hour] || null;
+    const da = dimOf(a);
+    const db = dimOf(b);
+    const dim = da || db ? [0, 1, 2].map((i) => mix((da || ONE)[i], (db || ONE)[i])) : null;
+    const has = (rg, what) => (rg.life.includes(what) ? 1 : 0);
+    const sky = (rg) => (rg.sky && rg.hour !== 'night' ? 1 : 0);
+    const t = this.vt;
+    const lights = [];
+    for (const L of layers) {
+      for (const th of L.things) {
+        const def = LIGHTS[th.t === 'cook' ? 'fire' : th.def.sprite];
+        if (!def || this.thingHidden(th)) continue;
+        // A fire gutters. Everything else breathes slowly.
+        const size = def.flicker
+          ? 1 + Math.sin(t * 0.31 + th.cx) * 0.035 - (((t >> 2) * 31 + th.cx) % 7 === 0 ? 0.06 : 0)
+          : 1 + Math.sin(t * 0.05) * 0.07;
+        lights.push({ x: L.ox + th.cx * TILE + def.x, y: L.oy + th.cy * TILE + def.y, r: def.r * size, color: def.color });
+      }
+    }
+    if (a.dark || b.dark) {
+      lights.push({ x: heroAt[0] + 8, y: heroAt[1] + 8, r: LANTERN.r + Math.sin(t * 0.07) * 1.5, color: LANTERN.color });
+      for (const m of this.mobs) {
+        if (m.def.boss) lights.push({ x: m.x + m.spr.w / 2, y: m.y + m.spr.h / 2, r: BOSS_LIGHT.r, color: BOSS_LIGHT.color });
+      }
+    }
+    for (const sh of this.shots) {
+      const def = SHOT_LIGHTS[sh.foe && sh.kind === 'orb' ? 'eorb' : sh.kind];
+      if (def) lights.push({ x: sh.x + 3, y: sh.y + 3, r: def.r, color: def.color });
+    }
+    return {
+      t, dim, lights, strict: settings.strict,
+      cloud: mix(sky(a), sky(b)), shafts: mix(has(a, 'shafts'), has(b, 'shafts')),
+      fog: mix(has(a, 'fog'), has(b, 'fog')), caustics: mix(has(a, 'caustics'), has(b, 'caustics')),
+      wobble: !!(has(a, 'wobble') && has(b, 'wobble')),
+    };
   }
 
   draw(g) {
+    const wg = this.fg;
+    const t = this.vt;
+    const s = this.mode === 'slide' ? this.slide : null;
+    const here = { bake: this.bake, things: this.things, air: this.air, region: this.region, ox: 0, oy: 0, live: true };
+    const layers = [here];
+    let k = 0;
+    let heroAt = [this.hero.x, this.hero.y];
+    if (s) {
+      const e = EDGES[s.edge];
+      const p = s.t / s.T;
+      k = p * p * (3 - 2 * p);
+      here.ox = Math.round(-e.dx * W * k);
+      here.oy = Math.round(-e.dy * FIELD_H * k);
+      here.live = false;
+      const next = { bake: s.toBake, things: s.toThings, air: s.toAir, region: s.toRegion, ox: here.ox + e.dx * W, oy: here.oy + e.dy * FIELD_H, live: false };
+      layers.push(next);
+      heroAt = [s.nx + next.ox, s.ny + next.oy];
+    }
+
+    // The field, off screen: the ground, then everyone on it, then the treetops.
+    for (const L of layers) this.drawFloor(wg, L);
+    if (s) {
+      for (const L of layers) {
+        this.drawThings(wg, L.things, L.ox, L.oy, null);
+        for (const b of L.bake.blades) drawBlade(wg, L.bake, b, t, !!L.region.wind, L.ox, L.oy);
+      }
+      this.drawHero(wg, heroAt[0], heroAt[1]);
+    } else {
+      const windy = !!this.region.wind;
+      const list = [];
+      this.drawThings(wg, this.things, 0, 0, list);
+      for (const m of this.mobs) list.push({ z: m.y + m.spr.h - 1, draw: () => this.drawMob(wg, m) });
+      list.push({ z: this.hero.y + 16, draw: () => this.drawHero(wg, this.hero.x, this.hero.y) });
+      for (const b of this.bake.blades) list.push({ z: b.y + 3, draw: () => drawBlade(wg, this.bake, b, t, windy, 0, 0) });
+      list.sort((a, b) => a.z - b.z);
+      for (const item of list) item.draw();
+      for (const sh of this.shots) {
+        const sx = Math.round(sh.x);
+        const sy = Math.round(sh.y);
+        if (sh.foe) wg.drawImage(this.S.fx[sh.kind === 'orb' ? 'eorb' : sh.kind], sx, sy);
+        else if (sh.kind === 'boom') wg.drawImage(this.S.fx.boomerang[(sh.t >> 1) & 3], sx, sy);
+        else if (sh.kind === 'arrow') wg.drawImage(this.S.fx.arrow[sh.dir], sx, sy);
+        else wg.drawImage(this.S.fx.orb, sx, sy);
+      }
+    }
+    for (const L of layers) {
+      drawTrees(wg, L.bake, t, !!L.region.wind, L.ox, L.oy, true);
+      L.air.draw(wg, 'air', t, L.ox, L.oy);
+    }
+    if (!s) {
+      for (const q of this.parts) {
+        if (q.poof) wg.drawImage(this.S.fx.poof[Math.min(2, Math.floor(q.t / 5))], Math.round(q.x), Math.round(q.y));
+        else fillRect(wg, q.x, q.y, 2, 2, q.color);
+      }
+      this.drawBits(wg, false);
+    }
+
+    // The light, laid over all of that. Then what makes its own.
+    const spec = this.lightSpec(layers, k, heroAt);
+    if (needsLight(spec)) {
+      const img = wg.getImageData(0, 0, W, FIELD_H);
+      lightFrame(new Uint32Array(img.data.buffer), W, FIELD_H, spec);
+      wg.putImageData(img, 0, 0);
+    }
+    for (const L of layers) L.air.draw(wg, 'bright', t, L.ox, L.oy);
+    if (!s) this.drawBits(wg, true);
+
+    // Onto the screen. The dice and the numbers go on after the light, so they always read.
     g.save();
     g.beginPath();
     g.rect(0, HUD_H, W, FIELD_H);
     g.clip();
     g.translate(0, HUD_H);
-
-    if (this.mode === 'slide') {
-      const s = this.slide;
-      const e = EDGES[s.edge];
-      const k = s.t / s.T;
-      const ease = k * k * (3 - 2 * k);
-      const ox = Math.round(-e.dx * W * ease);
-      const oy = Math.round(-e.dy * FIELD_H * ease);
-      const nx = ox + e.dx * W;
-      const ny = oy + e.dy * FIELD_H;
-      this.drawRoomLayer(g, this.bake, this.things, ox, oy, false);
-      this.drawRoomLayer(g, s.toBake, s.toThings, nx, ny, false);
-      this.drawHero(g, s.nx + nx, s.ny + ny);
-      g.drawImage(this.bake.fg, ox, oy);
-      g.drawImage(s.toBake.fg, nx, ny);
-    } else {
-      if (this.shake > 0 && settings.shake) g.translate(rnd(3) - 1, rnd(3) - 1);
-      this.drawRoomLayer(g, this.bake, this.things, 0, 0, true);
-      const list = [];
-      this.drawThings(g, this.things, 0, 0, list);
-      for (const m of this.mobs) list.push({ z: m.y + m.spr.h - 1, draw: () => this.drawMob(g, m) });
-      list.push({ z: this.hero.y + 16, draw: () => this.drawHero(g, this.hero.x, this.hero.y) });
-      list.sort((a, b) => a.z - b.z);
-      for (const item of list) item.draw();
-      for (const s of this.shots) {
-        const sx = Math.round(s.x);
-        const sy = Math.round(s.y);
-        if (s.foe) g.drawImage(this.S.fx[s.kind === 'orb' ? 'eorb' : s.kind], sx, sy);
-        else if (s.kind === 'boom') g.drawImage(this.S.fx.boomerang[(s.t >> 1) & 3], sx, sy);
-        else if (s.kind === 'arrow') g.drawImage(this.S.fx.arrow[s.dir], sx, sy);
-        else g.drawImage(this.S.fx.orb, sx, sy);
-      }
-      g.drawImage(this.bake.fg, 0, 0);
-      for (const q of this.parts) {
-        if (q.poof) g.drawImage(this.S.fx.poof[Math.min(2, Math.floor(q.t / 5))], Math.round(q.x), Math.round(q.y));
-        else fillRect(g, q.x, q.y, 2, 2, q.color);
-      }
+    if (!s && settings.shake) {
+      if (this.shake > 0) g.translate(rnd(3) - 1, rnd(3) - 1);
+      // A hit shoves the picture the way the blow went.
+      if (this.kick) g.translate(this.kick.dx * (this.kick.t > 2 ? 2 : 1), this.kick.dy * (this.kick.t > 2 ? 2 : 1));
+    }
+    g.drawImage(this.field, 0, 0);
+    if (!s) {
       for (const c of this.clashes) this.drawClash(g, c);
-      for (const f of this.floats) if (f.t >= 0) drawTextOutlined(g, f.text, Math.round(f.x), Math.round(f.y), f.color, '0');
+      for (const f of this.floats) {
+        if (f.t < 0) continue;
+        const hop = f.hop && f.t < 12 ? Math.round(Math.sin((f.t / 12) * Math.PI) * 6) : 0;
+        drawTextOutlined(g, f.text, Math.round(f.x), Math.round(f.y) - hop, f.color, '0');
+      }
 
       // What A would do right now.
       if (this.mode === 'play' && !this.ui.busy && this.hero.swing <= 0) {

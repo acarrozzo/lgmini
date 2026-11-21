@@ -31,7 +31,8 @@ export function applySettings() {
   setSfxVolume(levelGain(settings.sfx));
   setMuted(settings.muted);
   setPadLayout(settings.pad);
-  if (hasDoc() && document.body) document.body.classList.toggle('scan', !!settings.scan);
+  // The page draws the glass in front of the game: one class on the body for each kind.
+  if (hasDoc() && document.body) for (const kind of ['scan', 'crt', 'lcd']) document.body.classList.toggle(kind, settings.screen === kind);
 }
 
 /** Use the keys the player saved, if they changed any. */

@@ -44,8 +44,10 @@ Plain ES modules, no build step, no dependencies. Serve the folder and open `ind
 | `js/input.js` | Keyboard, touch and game pad, the keys on each button, and what each button is called |
 | `js/gfx.js`, `js/font.js` | The palette, the pixel buffer, pixel text |
 | `js/art-tiles.js`, `js/art-sprites.js` | All art, drawn in code |
+| `js/weather.js` | Wind, moving water, and what lives in each region's air. For the eye only |
+| `js/light.js` | The light laid over the finished field: the hour, dark caves, glow, clouds, fog |
 | `js/audio.js`, `js/songs.js` | The chip synth and the songs, written in code |
-| `js/data/*` | Rooms, enemies, items, quests, people, shops, the ending text, the Settings rows |
+| `js/data/*` | Rooms, enemies, items, quests, people, shops, the ending text, the Settings rows, each region's air |
 
 Things to know:
 
@@ -56,6 +58,11 @@ Things to know:
 - A new setting is a row in `js/data/settings.js`. It is saved, cleaned and reset from that row. Read it as `settings.key` from `state.js`.
 - Settings, changed keys and the best time share one stored object, `lgmini.prefs.v1`. Esc is fixed to the bag and cannot be moved, and no button can lose its last key, so no set of keys locks the player out.
 - All art uses the one palette in `gfx.js`. There are no image or sound files.
+- A room's ground is painted once (`paintRoom` in `js/art-tiles.js`). Trees, flowers and tall grass are not in that picture. They are handed back as lists and drawn each frame, so they can move.
+- What a region looks like beyond its tiles is a row in `js/data/regions.js`, keyed by theme: its hour, whether it is dark, its wind, what lives in its air. A new theme needs a row there, and a test says so. What gives off light is in the same file, keyed by sprite.
+- The field is drawn off screen, the light is laid over it, and then it goes on the screen. Whatever has to stay readable (the dice, the numbers, the boss bar, the HUD) is drawn after the light.
+- There are two clocks. `game.t` runs the game and stops while people talk. `game.vt` runs the weather and does not. Both stop for the few frames a hit holds, and the run clock does not count those frames.
+- Nothing in `weather.js`, `light.js` or `regions.js` may change a roll, a wall or the save.
 - The save key is `lgmini.save.v1`. Do not rename it without a migration that carries an existing save forward.
 
 ## Checking your work
@@ -64,7 +71,7 @@ Things to know:
 npm test
 ```
 
-The tests cover the rules, the world validator (every exit has a way back, every room and object can be reached, no two rooms share a cell), the art grids, the songs, and a swings-to-kill balance check. Add a test beside any rule you change.
+The tests cover the rules, the world validator (every exit has a way back, every room and object can be reached, no two rooms share a cell), the art grids, the room painters, the regions, the light, the songs, and a swings-to-kill balance check. Add a test beside any rule you change.
 
 In a browser:
 
@@ -102,6 +109,7 @@ Chosen by Anthony:
 - The swing winds up, sweeps across the front and steps in. He tried it on 2026-11-19 and kept it on 2026-11-20, over a plain sweep from the side to the front and a sweep all the way across.
 - Equipment is equal across the three attacks: a staff is worth what the sword and bow of its tier are. Magic Missile is a hit like the others, blocked by a full DEF roll, and a top roll crits. He picked this on 2026-11-20 over a block by half of DEF with no crits.
 - Where gear comes from, set by him on 2026-11-20 from a chart of the whole road. The Long Sword is in the chest in the Spider Cave room with the scorpions, not on the Alpha Scorpion. The Gator quest pays a Wooden Staff worth 3. Jack's bat quest pays the Long Bow and his cloak quest pays the Battle Axe, so the Goblin Chief hands over nothing. The Kobold Master quest pays the Iron Staff, the same tier as the Warriors' Iron Sword. The Ranger Guard's quest pays the Iron Bow. There is no Wooden Bow, no Wand, and no Savior of the Grassy Field quest; the Guardian Angel still talks.
+- The look. On 2026-11-20 he was shown a live page of options running on the game's own rooms, in four directions (Alive, Lit, Repainted, Arcade), and took all of it. Wind in the trees, the flowers and the tall grass, and gusts over the ground. Water that ripples in to shore. People who breathe and blink. Footsteps. Each region's own life (butterflies, leaves, shafts of sun, fireflies, fog, snow, bubbles, drips). Shadows under feet and under clouds. Glow from fires and pillars. Dark caves where the hero carries the only light. An hour of the day for each region. Richer tiles. A held frame and a spark on a hit, and enemies that burst into their own pixels and drop coins. CRT and handheld screens beside the scanlines.
 
 Declined, do not bring back:
 
@@ -117,7 +125,7 @@ Claude's calls he has not confirmed:
 - Pax's lines, the reward card, the credits, and every `DRAFT|` line. Every quest's `early` line is one: the main game has none.
 - The quest card: nothing is taken or paid until it is closed. It cannot be closed for its first half second. It replaced the "Quest done" lines that floated by. After it the giver goes on to their next quest in the same visit, so a player far ahead can get several cards in a row. A giver met for the first time still says their greeting before an `early` line. Gear on a plate says what it adds. Plates that do not fit one row go to a second.
 - Settings, built 2026-11-19 without the usual pictures first, because he said not to stop and ask. All of it is open to change: the layout of the screen, a fifth SETTINGS tab in the bag (tabs moved closer together to fit it), and a Settings line on the title screen (the title options moved up 13 pixels).
-- The settings themselves: Music and SFX sliders from 0 to 10 that start at 8, Mute, Hold to attack (off), Text speed, Screen shake, Rumble, Run clock shown or hidden, Scanlines (off), Fullscreen, Pad buttons, Keys, Defaults.
+- The settings themselves: Music and SFX sliders from 0 to 10 that start at 8, Mute, Hold to attack (off), Text speed, Screen shake, Rumble, Run clock shown or hidden, Fullscreen, Pad buttons, Keys, Defaults. Added with the look on 2026-11-20: Screen (sharp, scanlines, CRT, handheld), which took the place of the Scanlines switch and carries an old saved "on" forward; Hit stop (on); Light (on), which turns the whole light pass off for a slow phone; Strict colors (off), which snaps light and shadow to the palette.
 - The swords: the Training Sword is wood and the Battle Axe is drawn as a two-headed axe. A blade is a short description in `BLADES` in `js/art-sprites.js`, painted at sixteen angles, not a grid. The HUD and the bag still show one sword icon for all of them.
 - A longer blade reaches farther: its length plus 3 pixels, and never less than the 15 every sword used to reach. The Mithril Sword reaches 23. A swing still hits only what is in front.
 - The swing is still 16 frames, so nothing attacks faster or slower. The step forward is drawn, not moved: the hero's place and hit box stay where they were. The hatchet and the bare fist use the same swing.
@@ -128,6 +136,16 @@ Claude's calls he has not confirmed:
 - Hold to attack repeats the sword, the ranged weapon and the spell. It never talks, opens a chest or eats.
 - A button holds up to four keys. A key moves to the button it is given to.
 - Game pad: the bottom face button swings on Xbox and PlayStation pads, the right one on Nintendo pads, so the letter on screen is the letter on the pad. START is the bag and SELECT is the map. Shoulder buttons do nothing. Pad buttons cannot be remapped.
+- The look, built 2026-11-20. He chose what; these are how, and none of it has been played start to finish.
+  - The hours: Field and Beach are day, Forest is gold, Marsh and Dark Forest are dusk, Mountain is night, Camp Hero is dawn. Red Town is a mild late afternoon, because gold turned its gray stone yellow. Caves and the ocean floor have no hour. An hour tints the hero too.
+  - Room Zero and the Plane of Rebirth do not move at all. Only the light on the pillar does. The first step into the Field is when the world starts moving.
+  - Dark caves are dimmed to about a quarter and the hero's light reaches 62 pixels. A boss can always be seen in the dark, and a spell lights its own way, yours or theirs. Everything else is dark until it is close. This changes how caves play.
+  - A hit holds the game for 1 frame on a block, 3 on a hit, 5 on a crit, 7 on a kill, and 4 when the hero is hit, which the page did not show. A button pressed during a hold counts on the frame after. The hit also shoves the picture a pixel or two, and that follows Screen shake.
+  - Coins: one to four by how much gold dropped. They hop out, sit a moment and fly to the hero. The page had them blink out; flying in says the gold is already yours, which it is, counted at the kill as before.
+  - Dust rises on paths and on cave ground, not on stone floors. Prints stay in sand and in mountain snow.
+  - The weather keeps running while people talk and while the bag is open.
+  - The richer tiles are a first pass: patches and tufts in the ground, trees in clumps of leaves, deeper water off shore, pebbles on paths, ripples in sand. Walls, floors, houses, bushes, rocks and cave rock are as they were. The ground texture goes on every region's ground, snow and cave dirt included.
+  - Tall grass does not cover feet. The page said it would and the blades are too thin for it to read.
 
 Open:
 

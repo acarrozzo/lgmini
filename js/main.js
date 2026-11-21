@@ -186,6 +186,28 @@ function drawHint() {
   }
 }
 
+// ------------------------------------------------------- the glass in front
+// What Settings calls Screen. The page draws the lines and the corners
+// (index.html). Two kinds need the picture itself as well. A CRT glows: a copy
+// of the frame goes on a second canvas, which the page blurs and lays back
+// over. A handheld smears: half of the last frame is still there in this one.
+
+const glow = document.getElementById('glow');
+const glowG = glow ? glow.getContext('2d') : null;
+const ghost = makeCanvas(W, H);
+const ghostG = ghost.getContext('2d');
+let ghosted = false;
+
+function glass() {
+  if (settings.screen === 'lcd') {
+    ghostG.globalAlpha = ghosted ? 0.5 : 1;
+    ghostG.drawImage(canvas, 0, 0);
+    g.drawImage(ghost, 0, 0);
+    ghosted = true;
+  } else ghosted = false;
+  if (settings.screen === 'crt' && glowG) glowG.drawImage(canvas, 0, 0);
+}
+
 // -------------------------------------------------------------------- loop
 
 function tick() {
@@ -194,8 +216,11 @@ function tick() {
     applySettings();
   }
   if (scene === 'title') { updateTitle(); return; }
+  // The weather keeps going while people talk. The game itself waits for them.
+  game.animate();
   // The run clock: it counts whenever the game is open, and stops at Camp Hero.
-  if (!game.p.flags.ended) game.p.frames = (game.p.frames || 0) + 1;
+  // It does not count the frames a hit holds, so Hit stop on or off is the same run.
+  if (!game.p.flags.ended && !game.frozen) game.p.frames = (game.p.frames || 0) + 1;
   const was = ui.busy;
   ui.update();
   if (!was && !ui.busy) game.update();
@@ -221,6 +246,7 @@ function frame(now) {
     acc -= STEP;
   }
   render();
+  glass();
   if (currentDevice() !== 'touch') drawHint();
   requestAnimationFrame(frame);
 }
@@ -237,6 +263,6 @@ if (new URLSearchParams(location.search).has('debug')) {
   window.__lgmStart = () => begin(newPlayer(), true);
   // Run the loop by hand. A page in a background tab gets no frames, so a
   // check that presses keys has to turn the crank itself.
-  window.__lgmStep = (n = 1) => { for (let i = 0; i < n; i++) { pollInput(); tick(); } render(); };
+  window.__lgmStep = (n = 1) => { for (let i = 0; i < n; i++) { pollInput(); tick(); } render(); glass(); };
 }
 requestAnimationFrame(frame);

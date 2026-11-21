@@ -670,8 +670,9 @@ test('mini: a saved setting that makes no sense falls back to what it starts as'
   const { SETTINGS, TEXT_RATE } = await load('data/settings.js');
   const fresh = S.readSettings({});
   assert.deepEqual(fresh, S.readSettings(null));
-  assert.deepEqual([fresh.music, fresh.sfx, fresh.muted, fresh.hold, fresh.text, fresh.shake, fresh.clock, fresh.scan, fresh.pad],
-    [8, 8, false, false, 'normal', true, true, false, 'auto']);
+  assert.deepEqual([fresh.music, fresh.sfx, fresh.muted, fresh.hold, fresh.text, fresh.shake, fresh.clock, fresh.screen, fresh.pad],
+    [8, 8, false, false, 'normal', true, true, 'sharp', 'auto']);
+  assert.deepEqual([fresh.hitstop, fresh.light, fresh.strict], [true, true, false], 'the look starts with everything on but strict colors');
   assert.equal(fresh.full, undefined, 'fullscreen is the browser\'s to remember, not the save\'s');
   const odd = S.readSettings({ music: 99, sfx: -4, muted: 'yes', hold: true, text: 'warp', pad: 'sega', best: { frames: 10 } });
   assert.deepEqual([odd.music, odd.sfx, odd.muted, odd.hold, odd.text, odd.pad], [10, 0, false, true, 'normal', 'auto']);
@@ -840,4 +841,111 @@ test('mini: everything the Settings screen can say has letters to say it with', 
   // A line that names a button names it with a token, so it is right on every device.
   const bad = /\b[ABXY] (swings|throws|casts|eats|talks|closes|buys|uses|opens|cancels)\b|\b(Esc|START) (cancels|closes|opens)\b/;
   for (const line of [...SETTINGS.map((r) => r.help), ...Object.values(NOTES)]) assert.ok(!bad.test(line), `names a button outright: ${line}`);
+});
+
+// ------------------------------------------------------------ the look
+
+test('mini: scanlines saved by an older build are still scanlines', async () => {
+  const S = await load('state.js');
+  assert.deepEqual(S.upgradePrefs({ scan: true, music: 3 }), { screen: 'scan', music: 3 });
+  assert.deepEqual(S.upgradePrefs({ scan: false }), {}, 'off stays the sharp screen');
+  assert.deepEqual(S.upgradePrefs({ scan: true, screen: 'crt' }), { screen: 'crt' }, 'a newer choice wins');
+  assert.equal(S.readSettings(S.upgradePrefs({ scan: true })).screen, 'scan');
+  assert.equal(S.readSettings({ screen: 'vectrex' }).screen, 'sharp');
+});
+
+test('mini: every region is real, and so is everything it names', async () => {
+  const { REGIONS, HOURS, LIFE, LIGHTS, regionOf } = await load('data/regions.js');
+  const { THEMES } = await load('art-tiles.js');
+  const { THING_SPRITES } = await load('art-sprites.js');
+  const { ROOMS } = await load('data/rooms.js');
+  for (const theme of Object.keys(THEMES)) assert.ok(REGIONS[theme], `no region for the theme ${theme}`);
+  for (const [name, r] of Object.entries(REGIONS)) {
+    assert.ok(THEMES[name], `region ${name} is not a theme`);
+    for (const kind of r.life || []) assert.ok(LIFE.includes(kind), `${name}: nothing called ${kind} lives anywhere`);
+    if (r.hour) assert.ok(r.hour in HOURS, `${name}: no hour called ${r.hour}`);
+    if (r.dark) assert.ok(r.dark.length === 3 && r.dark.every((v) => v > 0 && v < 1), `${name}: dark is three parts of 1`);
+  }
+  for (const dim of Object.values(HOURS)) if (dim) assert.equal(dim.length, 3);
+  for (const sprite of Object.keys(LIGHTS)) assert.ok(THING_SPRITES.has(sprite), `a light on ${sprite}, which nothing draws`);
+  // Room Zero does not move. The Field is where the world starts to.
+  const zero = regionOf(ROOMS['000']);
+  assert.deepEqual([zero.life, zero.wind, zero.dark, zero.sky], [[], null, null, false]);
+  assert.ok(regionOf(ROOMS['001']).life.length > 0 && regionOf(ROOMS['001']).wind === 'air');
+  assert.deepEqual(regionOf({ theme: 'nowhere' }).life, [], 'a room with no region is plainly lit and still');
+});
+
+test('mini: every room paints in real colors, and hands back what grows there', async () => {
+  const { paintRoom, TREE_H } = await load('art-tiles.js');
+  const { PAL } = await load('gfx.js');
+  const { ROOMS } = await load('data/rooms.js');
+  const count = (map, ch) => map.join('').split(ch).length - 1;
+  for (const [id, room] of Object.entries(ROOMS)) {
+    const p = paintRoom({ ...room, id });
+    assert.ok(p.bg.d.every((ch) => PAL[ch]), `room ${id}: a pixel of the ground has no color`);
+    assert.equal(p.trees.length, count(room.map, 'T'), `room ${id}: a tree for every T`);
+    assert.equal(p.flowers.length, count(room.map, ',') * 3, `room ${id}: three flowers a tile`);
+    assert.equal(p.blades.length, count(room.map, '"') * 9, `room ${id}: nine blades a tile`);
+    assert.equal(!!p.shore, room.map.some((row) => row.includes('~')), `room ${id}: a shore where there is water`);
+    for (const t of p.trees) {
+      assert.equal(t.can.h, TREE_H);
+      for (const ch of [...t.trunk.d, ...t.can.d]) assert.ok(ch === '.' || PAL[ch], `room ${id}: a tree pixel has no color`);
+    }
+  }
+  // The same room paints the same way twice.
+  assert.deepEqual(paintRoom({ ...ROOMS['001'], id: '001' }).bg.d, paintRoom({ ...ROOMS['001'], id: '001' }).bg.d);
+});
+
+test('mini: water knows how far it is from land', async () => {
+  const { shoreMap } = await load('art-tiles.js');
+  const rows = Array.from({ length: 12 }, () => '................');
+  assert.equal(shoreMap(rows), null, 'no water, no shore');
+  rows[5] = '....~~~~=.......';
+  rows[6] = '....~~~~........';
+  const d = shoreMap(rows);
+  const at = (x, y) => d[y * 256 + x];
+  assert.equal(at(10, 10), 0, 'land is no distance from land');
+  assert.equal(at(4 * 16, 5 * 16), 1, 'the first pixel of water is one away');
+  assert.ok(at(6 * 16, 6 * 16) > at(4 * 16 + 1, 6 * 16), 'and it grows toward the middle');
+  assert.ok(at(8 * 16 + 8, 5 * 16 + 8) > 0, 'a bridge is over water');
+});
+
+test('mini: light dims a room, a lamp undoes it, and strict colors stay in the palette', async () => {
+  const { lightFrame, needsLight, nearest } = await load('light.js');
+  const { PAL } = await load('gfx.js');
+  const W = 64, H = 48;
+  const pack = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
+  const plain = { t: 0, dim: null, lights: [], cloud: 0, shafts: 0, fog: 0, caustics: 0, wobble: false, strict: false };
+  assert.equal(needsLight(null), false, 'Settings turned it off');
+  assert.equal(needsLight(plain), false, 'a plainly lit room is left alone');
+  assert.equal(needsLight({ ...plain, dim: [1, 1, 1] }), true);
+
+  const frame = () => new Uint32Array(W * H).fill(pack(200, 100, 50));
+  const red = (v) => v & 255;
+  let d = frame();
+  lightFrame(d, W, H, { ...plain, dim: [0.5, 0.5, 0.5] });
+  assert.ok(d.every((v) => v === pack(100, 50, 25)), 'every color is cut by what the hour says');
+
+  d = frame();
+  lightFrame(d, W, H, { ...plain, dim: [0.25, 0.25, 0.25], lights: [{ x: 32, y: 24, r: 20, color: [0, 0, 0] }] });
+  assert.equal(red(d[24 * W + 32]), 200, 'under a lamp the room is as it was');
+  assert.equal(red(d[0]), 50, 'far from it the room is dark');
+  const steps = new Set();
+  for (let x = 32; x < 60; x++) steps.add(red(d[24 * W + x]));
+  assert.ok(steps.size >= 4 && steps.size <= 5, 'and the light falls off in steps, not a blur');
+
+  d = frame();
+  lightFrame(d, W, H, { ...plain, dim: [0.6, 0.7, 0.9], cloud: 1, fog: 1, shafts: 1, caustics: 1, strict: true, lights: [{ x: 10, y: 10, r: 30, color: [255, 132, 40] }] });
+  const owned = new Set(Object.values(PAL).map((h) => pack(parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16))));
+  assert.ok(d.every((v) => owned.has(v)), 'strict colors: every pixel is a color the game owns');
+  assert.equal(nearest(0xf4, 0xf4, 0xf6), pack(0xf4, 0xf4, 0xf6), 'a color the game owns is its own nearest');
+});
+
+test('mini: the wind sways and a gust crosses the room', async () => {
+  const { wind, gustX } = await load('weather.js');
+  let low = 9, high = -9;
+  for (let t = 0; t < 600; t += 7) for (let x = 0; x < 256; x += 31) { const w = wind(t, x, 90); low = Math.min(low, w); high = Math.max(high, w); }
+  assert.ok(low < -0.5 && low >= -0.71, 'it leans things back a little');
+  assert.ok(high > 1.5 && high <= 2.31, 'and a gust leans them over');
+  assert.ok(gustX(0) < 0 && gustX(300) > 150, 'the gust comes in from the left and goes out the right');
 });

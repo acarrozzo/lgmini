@@ -1,9 +1,10 @@
 // Light Gray Mini: terrain. Every tile is painted in code from a region theme,
 // so one set of painters draws every region by changing the palette roles.
 //
-// A room is a 16x12 grid of characters (see TILES). bakeRoom() paints it once
-// into two canvases: `bg` under everything, `fg` for the bits that hang over
-// whoever walks behind them (treetops).
+// A room is a 16x12 grid of characters (see TILES). paintRoom() paints its
+// ground once. What moves is kept out of that picture and handed back as a
+// list, so the game can draw it each frame: trees that lean, flowers and tall
+// grass that bend (weather.js). bakeRoom() turns the lot into canvases.
 
 import { Buf, rng, TILE, COLS, ROWS } from './gfx.js';
 
@@ -132,6 +133,33 @@ const SANDISH = new Set(['sand', 'water', 'bridge', 'path', null]);
 
 const SIDES = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
 
+/** Smooth noise that repeats every 32 units, for patches bigger than a tile. */
+function noiseGrid(seed) {
+  const r = rng(seed);
+  const v = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) v[i] = r();
+  return (x, y) => {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const fx = x - xi;
+    const fy = y - yi;
+    const a = v[((yi & 31) << 5) | (xi & 31)];
+    const b = v[((yi & 31) << 5) | ((xi + 1) & 31)];
+    const c = v[(((yi + 1) & 31) << 5) | (xi & 31)];
+    const d = v[(((yi + 1) & 31) << 5) | ((xi + 1) & 31)];
+    const u = fx * fx * (3 - 2 * fx);
+    const w = fy * fy * (3 - 2 * fy);
+    return a + (b - a) * u + (c - a) * w + (a - b - c + d) * u * w;
+  };
+}
+
+/** A fixed number from 0 to 1 for one pixel of one room. */
+function speck(x, y, seed) {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + seed) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 function ground(b, ox, oy, c) {
   const { th, r } = c;
   b.rect(ox, oy, 16, 16, th.ground);
@@ -143,29 +171,54 @@ function ground(b, ox, oy, c) {
     b.px(ox + x + 2, oy + y, th.groundDark);
   }
   for (let i = 0; i < 3; i++) b.px(ox + ((r() * 16) | 0), oy + ((r() * 16) | 0), th.groundLight);
+  if (!c.tex) return;
+  // Ground is not one flat color. Patches bigger than a tile catch the light
+  // and grow short blades; others sit in shade and pick up dark flecks.
+  const { big, small, seed } = c.tex;
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const wx = ox + x;
+      const wy = oy + y;
+      if (b.get(wx, wy) !== th.ground) continue;
+      const n = big(wx / 30, wy / 22) * 0.7 + small(wx / 10, wy / 9) * 0.3;
+      const h = speck(wx, wy, seed);
+      if (n > 0.54) {
+        if (h >= (n - 0.54) * 0.42) continue;
+        b.px(wx, wy, th.groundLight);
+        if (y > 0 && b.get(wx, wy - 1) === th.ground) b.px(wx, wy - 1, th.groundLight);
+      } else if (n < 0.44 && h < (0.44 - n) * 0.4) {
+        b.px(wx, wy, th.groundDark);
+        if (x < 15 && y < 15) b.px(wx + 1, wy + 1, th.groundDark);
+      }
+    }
+  }
+  if (c.self !== 'ground' && c.self !== 'flowers') return;
+  for (let i = 0; i < 2; i++) {          // a tuft or two on open ground
+    const x = ox + 2 + ((r() * 12) | 0);
+    const y = oy + 3 + ((r() * 11) | 0);
+    b.px(x - 1, y - 1, th.groundLight); b.px(x + 1, y - 1, th.groundLight);
+    b.px(x, y, th.groundLight); b.px(x, y + 1, th.groundDark);
+  }
 }
 
-function flowers(b, ox, oy, c) {
-  ground(b, ox, oy, c);
+/** Where the three flowers of a flower tile stand, and their colors. They are drawn each frame. */
+function flowerSpots(ox, oy, c) {
   const petals = ['8', 'Y', 'M', 'W'];
+  const out = [];
   for (let i = 0; i < 3; i++) {
     const x = ox + 2 + ((c.r() * 12) | 0);
     const y = oy + 2 + ((c.r() * 12) | 0);
     const p = petals[(c.r() * petals.length) | 0];
-    b.px(x, y - 1, p); b.px(x - 1, y, p); b.px(x + 1, y, p); b.px(x, y + 1, p);
-    b.px(x, y, p === 'Y' ? 'O' : 'Y');
+    out.push({ x, y, p, c: p === 'Y' ? 'O' : 'Y' });
   }
+  return out;
 }
 
-function tallgrass(b, ox, oy, c) {
-  ground(b, ox, oy, c);
-  for (let i = 0; i < 9; i++) {
-    const x = ox + ((c.r() * 16) | 0);
-    const y = oy + 2 + ((c.r() * 12) | 0);
-    b.px(x, y, c.th.groundLight);
-    b.px(x, y + 1, c.th.groundLight);
-    b.px(x, y + 2, c.th.groundDark);
-  }
+/** Where the blades of a tall grass tile stand: the top of each. They are drawn each frame. */
+function bladeSpots(ox, oy, c) {
+  const out = [];
+  for (let i = 0; i < 9; i++) out.push({ x: ox + ((c.r() * 16) | 0), y: oy + 2 + ((c.r() * 12) | 0) });
+  return out;
 }
 
 /** Let the neighboring ground creep over the edges of a path or beach tile. */
@@ -194,6 +247,12 @@ function path(b, ox, oy, c) {
   b.rect(ox, oy, 16, 16, th.path);
   for (let i = 0; i < 5; i++) b.px(ox + ((r() * 16) | 0), oy + ((r() * 16) | 0), th.pathDark);
   for (let i = 0; i < 3; i++) b.px(ox + ((r() * 16) | 0), oy + ((r() * 16) | 0), th.pathLight);
+  for (let i = 0; i < 2; i++) {          // pebbles: lit on top, dark underneath
+    const x = ox + 3 + ((r() * 9) | 0);
+    const y = oy + 3 + ((r() * 9) | 0);
+    b.hline(x, y, 2, th.pathLight);
+    b.hline(x, y + 1, 2, th.pathDark);
+  }
   fringe(b, ox, oy, c, PATHISH, th.ground, th.pathDark);
 }
 
@@ -202,6 +261,9 @@ function sand(b, ox, oy, c) {
   b.rect(ox, oy, 16, 16, th.sand);
   for (let i = 0; i < 6; i++) b.px(ox + ((r() * 16) | 0), oy + ((r() * 16) | 0), th.sandDark);
   for (let i = 0; i < 3; i++) b.px(ox + ((r() * 16) | 0), oy + ((r() * 16) | 0), th.sandLight);
+  const rx = ox + 2 + ((r() * 7) | 0);     // a ripple the wind left
+  const ry = oy + 3 + ((r() * 10) | 0);
+  for (let j = 0; j < 7; j++) b.px(rx + j, ry + (j > 2 && j < 5 ? 1 : 0), th.sandDark);
   fringe(b, ox, oy, c, SANDISH, th.ground, th.sandDark);
 }
 
@@ -250,17 +312,45 @@ function blob(b, f, ox, oy, c, shape, cols) {
   }
 }
 
-function tree(b, f, ox, oy, c) {
-  const { th } = c;
-  ground(b, ox, oy, c);
-  b.ellipse(ox + 7.5, oy + 14, 6, 1.6, th.groundDark);
-  b.rect(ox + 6, oy + 10, 4, 5, th.trunk);
-  b.vline(ox + 5, oy + 11, 4, th.leafEdge);
-  b.vline(ox + 9, oy + 10, 5, th.trunkDark);
-  b.vline(ox + 10, oy + 11, 4, th.leafEdge);
-  b.hline(ox + 6, oy + 15, 4, th.leafEdge);
-  blob(b, f, ox, oy, c, { cx: 7.5, cy: 4, rx: 7.7, ry: 7.3, wobble: 0.07, specks: 7 },
-    { edge: th.leafEdge, light: th.leafLight, mid: th.leaf, dark: th.leafDark, hi: th.leafHi });
+// A tree is two pictures, 16 wide and 24 tall, that sit on a tile with their
+// top 8 rows hanging over the tile above: the trunk with its shadow, and the
+// leaves. They are kept apart so the leaves can lean in the wind.
+export const TREE_H = 24;
+export const TREE_OVER = 8;
+
+/** One tree: `trunk` and `can` (the canopy), each a Buf. */
+export function paintTree(th, r) {
+  const trunk = new Buf(16, TREE_H);
+  const can = new Buf(16, TREE_H);
+  const oy = TREE_OVER;
+  const c = { th, r };
+  trunk.ellipse(8.5, oy + 14.2, 7, 1.8, th.groundDark);
+  trunk.rect(6, oy + 9, 4, 6, th.trunk);
+  trunk.vline(8, oy + 9, 6, th.trunkDark);
+  trunk.vline(9, oy + 9, 6, th.trunkDark);
+  trunk.vline(5, oy + 11, 4, th.leafEdge);
+  trunk.vline(10, oy + 11, 4, th.leafEdge);
+  trunk.px(5, oy + 14, th.trunk);
+  trunk.px(10, oy + 14, th.trunkDark);
+  trunk.hline(5, oy + 15, 6, th.leafEdge);
+  // A dark mass first, then three lit clumps of leaves on top of it.
+  blob(can, null, 0, oy, c, { cx: 7.5, cy: 4.3, rx: 7.7, ry: 7.0, wobble: 0.08, specks: 0 },
+    { edge: th.leafEdge, light: th.leafDark, mid: th.leafDark, dark: th.leafDark, hi: th.leafDark });
+  const clump = { edge: th.leafDark, light: th.leafLight, mid: th.leaf, dark: th.leaf, hi: th.leafHi };
+  blob(can, null, 0, oy, c, { cx: 10.6, cy: 4.2, rx: 4.3, ry: 3.6, wobble: 0.1, specks: 2 }, clump);
+  blob(can, null, 0, oy, c, { cx: 6.4, cy: 7.4, rx: 4.6, ry: 3.4, wobble: 0.1, specks: 1 }, { ...clump, light: th.leaf });
+  blob(can, null, 0, oy, c, { cx: 5.2, cy: 1.8, rx: 4.6, ry: 3.8, wobble: 0.1, specks: 3 }, clump);
+  // Keep the dark ring whole where a clump reached the rim.
+  const rim = [];
+  for (let y = 0; y < TREE_H; y++) {
+    for (let x = 0; x < 16; x++) {
+      if (can.get(x, y) === '.') continue;
+      if (x === 0 || x === 15 || can.get(x - 1, y) === '.' || can.get(x + 1, y) === '.' ||
+          can.get(x, y - 1) === '.' || can.get(x, y + 1) === '.') rim.push([x, y]);
+    }
+  }
+  for (const [x, y] of rim) can.px(x, y, th.leafEdge);
+  return { trunk, can };
 }
 
 function bush(b, f, ox, oy, c) {
@@ -323,6 +413,17 @@ function water(b, f, ox, oy, c) {
   const { th, r } = c;
   b.rect(ox, oy, 16, 16, th.water);
   for (let i = 0; i < 2; i++) b.hline(ox + ((r() * 12) | 0), oy + 3 + ((r() * 11) | 0), 3, th.waterDark);
+  if (c.tex && c.shore) {
+    // Farther from land the water is deeper: more of the same dark dashes.
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 14; x++) {
+        const wx = ox + x;
+        const wy = oy + y;
+        const far = c.shore[wy * ROOM_W + wx] + (c.tex.big(wx / 13, wy / 13) - 0.5) * 16;
+        if (far > 20 && speck(wx, wy, c.tex.seed) < (far > 36 ? 0.075 : 0.04)) b.hline(wx, wy, 3, th.waterDark);
+      }
+    }
+  }
   const open = {};
   for (const side of Object.keys(SIDES)) open[side] = !WATERISH.has(c.kind(side));
   for (let i = 0; i < 16; i++) {
@@ -409,14 +510,17 @@ function voidTile(b, f, ox, oy, c) {
   b.rect(ox, oy, 16, 16, c.th.void);
 }
 
+// Trees, flowers and tall grass are painted as bare ground here. What grows on
+// them is handed back by paintRoom() and drawn each frame.
 const PAINT = {
   ground: (b, f, ox, oy, c) => ground(b, ox, oy, c),
-  flowers: (b, f, ox, oy, c) => flowers(b, ox, oy, c),
-  tallgrass: (b, f, ox, oy, c) => tallgrass(b, ox, oy, c),
+  flowers: (b, f, ox, oy, c) => ground(b, ox, oy, c),
+  tallgrass: (b, f, ox, oy, c) => ground(b, ox, oy, c),
+  tree: (b, f, ox, oy, c) => ground(b, ox, oy, c),
   path: (b, f, ox, oy, c) => path(b, ox, oy, c),
   sand: (b, f, ox, oy, c) => sand(b, ox, oy, c),
   floor: (b, f, ox, oy, c) => floor(b, ox, oy, c),
-  tree, bush, rock, stump, fence, water, bridge, wall, cavemouth, stairsdown, stairsup,
+  bush, rock, stump, fence, water, bridge, wall, cavemouth, stairsdown, stairsup,
   void: voidTile,
 };
 
@@ -426,17 +530,60 @@ function hashStr(s) {
   return h >>> 0;
 }
 
-/** Paint a whole room. Returns { bg, fg } canvases, 256x192. */
-export function bakeRoom(room) {
+const ROOM_W = COLS * TILE;
+const ROOM_H = ROWS * TILE;
+
+/**
+ * How far every pixel of a room is from dry land, in pixels. Land is 0. A
+ * bridge counts as water, and so does whatever is past the edge of the room.
+ * Null when the room has no water.
+ */
+export function shoreMap(map) {
+  const wet = (cx, cy) => { const t = TILES[map[cy][cx]]; return !!t && (t.kind === 'water' || t.kind === 'bridge'); };
+  if (!map.some((row) => row.includes('~'))) return null;
+  const d = new Float32Array(ROOM_W * ROOM_H);
+  for (let y = 0; y < ROOM_H; y++) for (let x = 0; x < ROOM_W; x++) d[y * ROOM_W + x] = wet(x >> 4, y >> 4) ? 1e5 : 0;
+  const relax = (i, x, y, w) => {
+    if (x < 0 || y < 0 || x >= ROOM_W || y >= ROOM_H) return;
+    const v = d[y * ROOM_W + x] + w;
+    if (v < d[i]) d[i] = v;
+  };
+  // Two sweeps, counting 3 for a step and 4 for a diagonal, then back to pixels.
+  for (let y = 0; y < ROOM_H; y++) {
+    for (let x = 0; x < ROOM_W; x++) {
+      const i = y * ROOM_W + x;
+      relax(i, x - 1, y, 3); relax(i, x, y - 1, 3); relax(i, x - 1, y - 1, 4); relax(i, x + 1, y - 1, 4);
+    }
+  }
+  for (let y = ROOM_H - 1; y >= 0; y--) {
+    for (let x = ROOM_W - 1; x >= 0; x--) {
+      const i = y * ROOM_W + x;
+      relax(i, x + 1, y, 3); relax(i, x, y + 1, 3); relax(i, x + 1, y + 1, 4); relax(i, x - 1, y + 1, 4);
+    }
+  }
+  for (let i = 0; i < d.length; i++) d[i] /= 3;
+  return d;
+}
+
+/**
+ * Paint a whole room without a browser. Returns its ground as a Buf, 256x192,
+ * and what grows on it: `trees` ({ cx, cy, trunk, can }), `flowers`
+ * ({ x, y, p, c }) and `blades` ({ x, y }), in room pixels.
+ */
+export function paintRoom(room) {
   const th = THEMES[room.theme] || THEMES.field;
-  const bg = new Buf(COLS * TILE, ROWS * TILE, th.void);
-  const fg = new Buf(COLS * TILE, ROWS * TILE, '.');
+  const bg = new Buf(ROOM_W, ROOM_H, th.void);
   const base = hashStr(String(room.id));
+  const shore = shoreMap(room.map);
+  const tex = { big: noiseGrid(base + 5), small: noiseGrid(base + 11), seed: base };
+  const trees = [];
+  const flowers = [];
+  const blades = [];
   for (let cy = 0; cy < ROWS; cy++) {
     for (let cx = 0; cx < COLS; cx++) {
       const t = tileAt(room, cx, cy);
       const c = {
-        th,
+        th, tex, shore, self: t.kind,
         r: rng(base + cx * 7919 + cy * 104729),
         kind(side) {
           const [dx, dy] = SIDES[side];
@@ -444,23 +591,48 @@ export function bakeRoom(room) {
           return n ? n.kind : null;
         },
       };
-      (PAINT[t.kind] || PAINT.ground)(bg, fg, cx * TILE, cy * TILE, c);
+      (PAINT[t.kind] || PAINT.ground)(bg, null, cx * TILE, cy * TILE, c);
+      if (t.kind === 'tree') trees.push({ cx, cy, ...paintTree(th, c.r) });
+      else if (t.kind === 'flowers') flowers.push(...flowerSpots(cx * TILE, cy * TILE, c));
+      else if (t.kind === 'tallgrass') blades.push(...bladeSpots(cx * TILE, cy * TILE, c));
     }
   }
-  return { bg: bg.toCanvas(`room ${room.id}`), fg: fg.toCanvas(`room ${room.id} fg`) };
+  return { th, bg, trees, flowers, blades, shore };
 }
 
-/** Animated glints for water cells; drawn over the baked room each frame. */
-export function waterGlints() {
-  const frames = [];
-  for (let i = 0; i < 4; i++) {
-    const b = new Buf(16, 16);
-    b.hline(2 + i, 4, 3, 'W');
-    b.hline(9 - i, 10, 3, 'W');
-    b.px((5 + i * 3) % 16, 13, 'i');
-    frames.push(b.toCanvas('glint'));
+/**
+ * Paint a room for the screen. `bg` is its ground. `trees` is one canvas with
+ * every tree of the room side by side, trunks in the top row and leaves under
+ * them, and `treeAt` says where each one stands. `water` lists the pixels that
+ * are open water, for the ripples.
+ */
+export function bakeRoom(room) {
+  const p = paintRoom(room);
+  const n = p.trees.length;
+  const sheet = new Buf(Math.max(1, n) * 16, TREE_H * 2);
+  p.trees.forEach((t, i) => {
+    sheet.stamp(t.trunk.rows(), i * 16, 0);
+    sheet.stamp(t.can.rows(), i * 16, TREE_H);
+  });
+  let water = null;
+  if (p.shore) {
+    const pix = [];
+    for (let y = 0; y < ROOM_H; y++) {
+      for (let x = 0; x < ROOM_W; x++) if ((TILES[room.map[y >> 4][x >> 4]] || {}).water) pix.push(y * ROOM_W + x);
+    }
+    water = Int32Array.from(pix);
   }
-  return frames;
+  return {
+    th: p.th,
+    bg: p.bg.toCanvas(`room ${room.id}`),
+    trees: n ? sheet.toCanvas(`room ${room.id} trees`) : null,
+    treeAt: p.trees.map((t) => [t.cx, t.cy]),
+    flowers: p.flowers,
+    blades: p.blades,
+    shore: p.shore,
+    water,
+    seed: hashStr(String(room.id)),
+  };
 }
 
 export { GROUNDISH };

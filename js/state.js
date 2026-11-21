@@ -67,9 +67,21 @@ export function readSettings(stored) {
   return out;
 }
 
+/**
+ * Bring what an older build stored up to date, in place. Scanlines used to be
+ * a switch of their own (`scan`); now they are one kind of `screen`.
+ */
+export function upgradePrefs(stored) {
+  if (stored && stored.scan !== undefined) {
+    if (stored.scan === true && stored.screen === undefined) stored.screen = 'scan';
+    delete stored.scan;
+  }
+  return stored;
+}
+
 // What is stored (the settings, any changed keys, the best time), and the
 // settings as the game reads them. One of each, shared by everything.
-export const prefs = loadPrefs();
+export const prefs = upgradePrefs(loadPrefs());
 export const settings = readSettings(prefs);
 
 export function setSetting(key, value) {

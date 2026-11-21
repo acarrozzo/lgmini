@@ -30,14 +30,46 @@
     box-shadow: 0 0 0 2px var(--raised), 0 0 0 4px #000;
   }
   body.touch #screen { box-shadow: none; }
-  /* Scanlines, when Settings turns them on: the bottom row of every game pixel
-     goes dark. --px is how big a game pixel is on screen; main.js keeps it. */
-  #scan { display: none; position: absolute; inset: 0; pointer-events: none; }
+  /* The glass in front of the game, when Settings picks one. --px is how big a
+     game pixel is on screen; main.js keeps it. Under two screen pixels to a
+     game pixel there is no room for any of it.
+     Scanlines: the bottom row of every game pixel goes dark. */
+  #scan, #glow { display: none; position: absolute; inset: 0; pointer-events: none; }
   body.scan:not(.small) #scan {
     display: block;
     background: repeating-linear-gradient(to bottom,
       transparent 0, transparent calc(var(--px) - 1px),
       rgba(0, 0, 0, 0.3) calc(var(--px) - 1px), rgba(0, 0, 0, 0.3) var(--px));
+  }
+  /* CRT: heavier scanlines, a faint red, green and blue stripe across every
+     pixel, dark corners, and a soft copy of the picture glowing over it. */
+  body.crt:not(.small) #scan {
+    display: block;
+    background:
+      radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.5) 100%),
+      repeating-linear-gradient(to right,
+        rgba(255, 40, 40, 0.07) 0, rgba(255, 40, 40, 0.07) calc(var(--px) / 3),
+        rgba(40, 255, 40, 0.06) calc(var(--px) / 3), rgba(40, 255, 40, 0.06) calc(var(--px) * 2 / 3),
+        rgba(60, 60, 255, 0.08) calc(var(--px) * 2 / 3), rgba(60, 60, 255, 0.08) var(--px)),
+      repeating-linear-gradient(to bottom,
+        transparent 0, transparent calc(var(--px) * 2 / 3),
+        rgba(0, 0, 0, 0.36) calc(var(--px) * 2 / 3), rgba(0, 0, 0, 0.36) var(--px));
+  }
+  body.crt #glow {
+    display: block; width: 100%; height: 100%;
+    filter: blur(calc(var(--px) * 1.4)); clip-path: inset(0);
+    mix-blend-mode: screen; opacity: 0.32;
+  }
+  /* Handheld: a line of the case showing between every pixel. main.js adds the smear. */
+  body.lcd:not(.small) #scan {
+    display: block;
+    background:
+      repeating-linear-gradient(to right,
+        transparent 0, transparent calc(var(--px) - 1px),
+        rgba(7, 20, 29, 0.3) calc(var(--px) - 1px), rgba(7, 20, 29, 0.3) var(--px)),
+      repeating-linear-gradient(to bottom,
+        transparent 0, transparent calc(var(--px) - 1px),
+        rgba(7, 20, 29, 0.3) calc(var(--px) - 1px), rgba(7, 20, 29, 0.3) var(--px));
   }
   #keys { color: var(--muted); font-size: 12px; letter-spacing: 0.02em; }
   #keys b { color: var(--text); font-weight: 600; }
@@ -103,6 +135,7 @@
 <div id="app">
   <div id="stage">
     <canvas id="screen" width="256" height="224"></canvas>
+    <canvas id="glow" width="256" height="224"></canvas>
     <div id="scan"></div>
   </div>
   <div id="keys"><b>Arrows</b> move &nbsp; <b>Z</b> swing / talk &nbsp; <b>X</b> throw &nbsp; <b>C</b> cast &nbsp; <b>V</b> eat &nbsp; <b>Enter</b> bag &nbsp; <b>Tab</b> map &nbsp; <b>M</b> sound</div>
