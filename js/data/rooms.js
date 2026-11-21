@@ -470,7 +470,7 @@ export const ROOMS = {
       '################',
     ],
     things: [
-      { t: 'chest', x: 12, y: 3, id: 'chest-010', loot: { gold: [40, 60], items: [['red-potion', 1]] } },
+      { t: 'chest', x: 12, y: 3, id: 'chest-010', loot: { gold: [40, 60], items: [['red-potion', 1], ['long-sword', 1]] } },
     ],
     spawns: [['scorpion', 2], ['giant-spider', 1], ['alpha-scorpion', 1]],
   },

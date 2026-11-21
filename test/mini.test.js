@@ -170,19 +170,64 @@ test('mini: handing a quest in takes what it asked for and pays what it promised
   // A kill quest takes nothing; gear it pays is worn when it is better.
   const j = R.newPlayer();
   R.finishQuest(j, 'jack_001', { ...QUESTS.jack_001, consume: false });
-  assert.equal(j.gear.ranged, 'wooden-bow');
+  assert.equal(j.gear.ranged, 'long-bow');
+});
+
+test('mini: gear goes where Anthony put it', async () => {
+  const { QUESTS, PEOPLE } = await load('data/quests.js');
+  const { ENEMIES } = await load('data/enemies.js');
+  const { ROOMS } = await load('data/rooms.js');
+  const { ITEMS } = await load('data/items.js');
+  const pays = (id) => (QUESTS[id].reward.items || []).map(([slug]) => slug);
+  assert.deepEqual(pays('oldman_003'), ['wooden-staff'], 'the Gator quest pays the first staff');
+  assert.deepEqual(pays('jack_001'), ['long-bow'], 'the bat quest pays the first bow');
+  assert.deepEqual(pays('jack_000'), ['battle-axe']);
+  assert.deepEqual(pays('warriors_000'), ['iron-sword']);
+  assert.deepEqual(pays('wizards_000'), ['iron-staff'], 'the two guilds pay the same tier');
+  assert.deepEqual(pays('ranger_001'), ['iron-bow']);
+  // The Long Sword is in the chest where the scorpions are, not on the Alpha Scorpion.
+  assert.equal(ENEMIES['alpha-scorpion'].first, undefined);
+  assert.equal(ENEMIES['goblin-chief'].first, undefined);
+  const cave = ROOMS['010'];
+  assert.ok(cave.spawns.some(([slug]) => slug === 'alpha-scorpion'));
+  assert.ok(cave.things.some((t) => t.t === 'chest' && t.loot.items.some(([slug]) => slug === 'long-sword')));
+  // Gone from the game.
+  assert.equal(ITEMS['wooden-bow'], undefined);
+  assert.equal(ITEMS.wand, undefined);
+  assert.equal(QUESTS.grand_field, undefined);
+  assert.equal(PEOPLE.guardian_angel.quests, undefined, 'the Guardian Angel still talks, and asks for nothing');
+});
+
+test('mini: a save holding gear the game dropped wears the best of what is left', async () => {
+  const R = await load('rules.js');
+  const p = R.newPlayer();
+  R.takeGear(p, 'boomerang');
+  R.takeGear(p, 'wooden-staff');
+  Object.assign(p.owned, { 'wooden-bow': true, wand: true });
+  Object.assign(p.gear, { ranged: 'wooden-bow', staff: 'wand' });
+  p.bag['old-thing'] = 2;
+  p.quick = 'old-thing';
+  R.dropLostItems(p);
+  assert.deepEqual([p.gear.ranged, p.gear.staff], ['boomerang', 'wooden-staff']);
+  assert.deepEqual(Object.keys(p.owned).sort(), ['boomerang', 'wooden-staff']);
+  assert.deepEqual([p.bag['old-thing'], p.quick], [undefined, null]);
+  // Nothing to fall back on: the slot is empty, and an empty slot is left alone.
+  const q = R.newPlayer();
+  q.gear.ranged = 'wooden-bow';
+  R.dropLostItems(q);
+  assert.deepEqual(q.gear, R.newPlayer().gear);
 });
 
 test('mini: the quest card has a plate for everything a quest pays, and they fit the screen', async () => {
   const U = await load('ui.js');
   const { QUESTS } = await load('data/quests.js');
   const { GLYPHS } = await load('font.js');
-  const { W } = await load('gfx.js');
+  const { W, H, HUD_H } = await load('gfx.js');
   const { plain } = await load('world.js');
-  assert.deepEqual(U.questRewards(QUESTS.jack_001), [
-    { mark: 'coin', text: '100', color: 'J' },
-    { mark: 'star', text: '50 XP', color: 'I' },
-    { mark: 'bow', text: 'Wooden Bow', color: '9', note: '+8 DEX' },
+  assert.deepEqual(U.questRewards(QUESTS.ranger_001), [
+    { mark: 'coin', text: '400', color: 'J' },
+    { mark: 'star', text: '600 XP', color: 'I' },
+    { mark: 'bow', text: 'Iron Bow', color: '9', note: '+18 DEX' },
   ]);
   assert.equal(U.questRewards(QUESTS.oldman_002)[2].text, '5 Cooked Meat');
   for (const [id, q] of Object.entries(QUESTS)) {
@@ -190,6 +235,9 @@ test('mini: the quest card has a plate for everything a quest pays, and they fit
     const rows = U.plateRows(rewards);
     assert.equal(rows.flat().length, rewards.length, `${id} lost a plate`);
     assert.ok(rows.length >= 1 && rows.length <= 2, `${id} needs ${rows.length} rows of plates`);
+    // The card moves up half a row for each row it adds. Its button must stay on the screen.
+    const top = HUD_H + 34 - (rows.length - 1) * 11;
+    assert.ok(top >= HUD_H + 4 && top + 66 + rows.length * 22 + 8 <= H, `${id}: the card does not fit with ${rows.length} rows`);
     for (const row of rows) {
       const width = row.reduce((n, r) => n + U.plateWidth(r), 0) + (row.length - 1) * 5;
       assert.ok(width <= W - 16, `${id} has a row of plates ${width} wide`);
@@ -479,6 +527,63 @@ test('mini: a roll in the top tenth is a crit, and a crit doubles the damage', a
   assert.deepEqual([plainHit.a, plainHit.d, plainHit.dmg, plainHit.crit], [5, 2, 3, false]);
   const blocked = R.strike(3, 9, fixed(0.99, 0.99));
   assert.deepEqual([blocked.dmg, blocked.crit], [0, false], 'a top roll that is blocked whole is not a crit');
+});
+
+test('mini: Magic Missile is a hit like any other, blocked by DEF, and it crits', async () => {
+  const R = await load('rules.js');
+  const missile = R.SPELLS.missile;
+  // 1 + spell level on top of a MAG roll. The attack rolls first, then the block.
+  const plainHit = missile.roll(10, 4, fixed(0.5, 0.5));
+  assert.deepEqual([plainHit.a, plainHit.d, plainHit.dmg, plainHit.crit], [7, 2, 5, false]);
+  assert.deepEqual([plainHit.aMax, plainHit.dMax], [12, 4], 'both dice can be shown, the flat 2 on the attack die');
+  const blocked = missile.roll(10, 12, fixed(0.3, 0.99));
+  assert.deepEqual([blocked.a, blocked.d, blocked.dmg], [5, 12, 0], 'DEF can stop it whole');
+  const crit = missile.roll(10, 4, fixed(0.99, 0.5));
+  assert.deepEqual([crit.a, crit.d, crit.dmg, crit.crit], [12, 2, 20, true], 'a top MAG roll doubles what gets through');
+  const noMag = missile.roll(0, 0, fixed(0.99, 0));
+  assert.deepEqual([noMag.dmg, noMag.crit], [2, false], 'with no MAG it is the flat 2, and never a crit');
+  // The flat 2 does not make crits more common: 9 of 0..10 is a crit, 8 is not.
+  assert.equal(missile.roll(10, 0, fixed(0.75, 0)).crit, false);
+  for (let i = 0; i < 200; i++) {
+    const r = missile.roll(7, 4);
+    assert.ok(r.a >= 2 && r.a <= 9 && r.d >= 0 && r.d <= 4);
+    assert.equal(r.dmg, Math.max(0, r.a - r.d) * (r.crit ? 2 : 1));
+  }
+});
+
+test('mini: a staff is worth what the sword and bow of its tier are', async () => {
+  const { ITEMS } = await load('data/items.js');
+  const { QUESTS } = await load('data/quests.js');
+  const tier = (t) => [ITEMS[`${t}-sword`].str, ITEMS[`${t}-bow`].dex, ITEMS[`${t}-staff`].mag];
+  for (const t of ['iron', 'steel']) {
+    const [str, dex, mag] = tier(t);
+    assert.ok(str === dex && dex === mag, `${t}: sword ${str}, bow ${dex}, staff ${mag}`);
+  }
+  // The first staff, the first sword and the first thing you throw are all a 3.
+  assert.equal(ITEMS['basic-staff'].mag, ITEMS['training-sword'].str);
+  assert.equal(ITEMS['wooden-staff'].mag, ITEMS['training-sword'].str);
+  assert.equal(ITEMS['wooden-staff'].mag, ITEMS.boomerang.dex);
+});
+
+test('mini: at the same number, a spell lands a little more than an arrow and never twice as much', async () => {
+  const R = await load('rules.js');
+  const { ENEMIES } = await load('data/enemies.js');
+  // Expected damage of a strike, crits and all, exactly.
+  const expected = (off, def, flat = 0) => {
+    let sum = 0;
+    for (let a = 0; a <= off; a++) for (let d = 0; d <= def; d++) {
+      const dmg = Math.max(0, flat + a - d);
+      sum += dmg > 0 && R.isCrit(a, off) ? dmg * 2 : dmg;
+    }
+    return sum / ((off + 1) * (def + 1));
+  };
+  for (const [slug, e] of Object.entries(ENEMIES)) {
+    if (e.level < 6) continue;    // before the first bow and staff the numbers are too small to compare
+    const stat = Math.round(e.level * 0.6) + (e.level >= 18 ? 27 : e.level >= 12 ? 18 : 11);
+    const arrow = expected(stat, e.def);
+    const spell = expected(stat, e.def, R.SPELLS.missile.flat);
+    assert.ok(spell > arrow && spell < arrow * 1.35, `${slug}: arrow ${arrow.toFixed(1)}, spell ${spell.toFixed(1)}`);
+  }
 });
 
 test('mini: a better sword is a bigger sword, and a bigger sword reaches farther', async () => {

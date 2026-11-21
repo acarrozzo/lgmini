@@ -44,7 +44,7 @@ export const ENEMIES = {
   },
   'alpha-scorpion': {
     name: 'Alpha Scorpion', sprite: 'alpha_scorpion', level: 5, hp: 20, att: 8, def: 5, type: 'melee',
-    ai: 'chase', speed: 0.55, gold: [5, 10], drops: [['scorpion-tail', 1]], first: 'long-sword',
+    ai: 'chase', speed: 0.55, gold: [5, 10], drops: [['scorpion-tail', 1]],   // main game: first kill hands over a Long Sword; here it is in the chest beside it
   },
   gator: {
     name: 'Gator', sprite: 'gator', level: 5, hp: 100, att: 8, def: 0, type: 'melee',
@@ -67,7 +67,7 @@ export const ENEMIES = {
   'goblin-chief': {
     name: 'Goblin Chief', look: 'goblin_chief', big: true, level: 10, hp: 110, att: 14, def: 3, type: 'melee',
     boss: true, special: 'power', ai: 'lunge', speed: 0.5, gold: [60, 120],
-    drops: [['goblin-cloak', 1], ['red-potion', 1]], first: 'long-bow', restMinutes: 5,
+    drops: [['goblin-cloak', 1], ['red-potion', 1]], restMinutes: 5,   // the Long Bow is Jack's to give, for the bat wings
   },
 
   // -------------------------------------------------------------- Forest

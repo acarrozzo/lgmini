@@ -542,7 +542,7 @@ export class UI {
         drawText(g, `${s.mp} MP`, cx + 110, cy, 'E');
         if (p.spell === slug) drawText(g, label('y'), cx + 150, cy, 'a');
         cy += 11;
-        drawText(g, s.blurb, cx + 10, cy, 'a');
+        drawText(g, plain(s.blurb), cx + 10, cy, 'a');
         cy += 14;
       });
     } else if (m.tab === SETTINGS_TAB) {

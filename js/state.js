@@ -1,7 +1,7 @@
 // Light Gray Mini: the save. One slot, in this browser only. Nothing here is
 // tied to a Light Gray RPG account.
 
-import { newPlayer } from './rules.js';
+import { newPlayer, dropLostItems } from './rules.js';
 import { SETTINGS } from './data/settings.js';
 
 // ?slot=name keeps a separate save, so a test run never touches the real one.
@@ -20,7 +20,7 @@ export function loadGame() {
     const player = { ...newPlayer(), ...data, gear: { ...newPlayer().gear, ...(data.gear || {}) } };
     // A save from before the run clock: its time would be a lie, so it has none.
     if (data.frames === undefined) player.untimed = true;
-    return player;
+    return dropLostItems(player);
   } catch {
     return null;
   }

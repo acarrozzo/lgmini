@@ -14,6 +14,7 @@ It was built inside the main game's repository in November 2026 and moved here o
 - Real lines from the main game are used as they are. Two small edits are made without marking: an em dash becomes a period, and mentions of Wings or Gills potions are dropped (here those are bought once and kept).
 - Numbers for the Grassy Field are the main game's. Past the Field they are this game's own, marked `MINI` in `js/data/items.js`, sized so the road ends near level 20.
 - The combat math is the main game's: an offensive roll opposed by a defensive roll, floored at zero. STR swings, DEX throws, MAG casts. An enemy's melee is blocked by DEF, its ranged by DEX, its magic by MAG. XP is the cubic curve `2 * (level + 1)^3`.
+- One place the Mini went first: Magic Missile is blocked by the enemy's DEF and can crit, and staffs carry the same numbers as swords and bows. In the main game nothing blocks a spell and staffs are lower; Anthony is changing that there.
 - Do not grow this into the main game. It is short on purpose.
 
 ## Voice
@@ -99,6 +100,8 @@ Chosen by Anthony:
 - A quest finished before its giver asked for it is asked and handed in with one line, in one visit, with the giver impressed. That line is the quest's `early`.
 - The sword gets bigger as it upgrades. Each is longer than the one before, the last two are wider, and each has its own metal. He picked this on 2026-11-19 over longer blades that all look like the old one, and over a bigger set where the Mithril Sword outgrows the hero.
 - The swing winds up, sweeps across the front and steps in. He tried it on 2026-11-19 and kept it on 2026-11-20, over a plain sweep from the side to the front and a sweep all the way across.
+- Equipment is equal across the three attacks: a staff is worth what the sword and bow of its tier are. Magic Missile is a hit like the others, blocked by a full DEF roll, and a top roll crits. He picked this on 2026-11-20 over a block by half of DEF with no crits.
+- Where gear comes from, set by him on 2026-11-20 from a chart of the whole road. The Long Sword is in the chest in the Spider Cave room with the scorpions, not on the Alpha Scorpion. The Gator quest pays a Wooden Staff worth 3. Jack's bat quest pays the Long Bow and his cloak quest pays the Battle Axe, so the Goblin Chief hands over nothing. The Kobold Master quest pays the Iron Staff, the same tier as the Warriors' Iron Sword. The Ranger Guard's quest pays the Iron Bow. There is no Wooden Bow, no Wand, and no Savior of the Grassy Field quest; the Guardian Angel still talks.
 
 Declined, do not bring back:
 
@@ -106,7 +109,7 @@ Declined, do not bring back:
 
 Claude's calls he has not confirmed:
 
-- Wings and Gills are bought once at the Wizard's Guild and kept. The toll is 300 gold. Jack's bat quest pays a Wooden Bow.
+- Wings and Gills are bought once at the Wizard's Guild and kept. The toll is 300 gold.
 - Bosses are the 16-pixel sprites doubled.
 - A crit is a roll in the top tenth of its range and doubles the damage. Enemies do not crit.
 - Eight pines at Jack's farm though he allows only ten wood. Two wood a tree.
@@ -118,6 +121,10 @@ Claude's calls he has not confirmed:
 - The swords: the Training Sword is wood and the Battle Axe is drawn as a two-headed axe. A blade is a short description in `BLADES` in `js/art-sprites.js`, painted at sixteen angles, not a grid. The HUD and the bag still show one sword icon for all of them.
 - A longer blade reaches farther: its length plus 3 pixels, and never less than the 15 every sword used to reach. The Mithril Sword reaches 23. A swing still hits only what is in front.
 - The swing is still 16 frames, so nothing attacks faster or slower. The step forward is drawn, not moved: the hero's place and hit box stay where they were. The hatchet and the bare fist use the same swing.
+- The staffs: Iron Staff 18 and Steel Staff 27, to match the iron and steel swords and bows. The Basic Shop still sells the Basic Staff, which is the same 3 as the Wooden Staff the Gator quest pays.
+- The Wizard's Guild line said the recruiter hands you a wand. It pays a staff now, so that one word was changed to "staff" in his line.
+- A save that holds something the game dropped (the Wooden Bow, the Wand) has it taken out on load, and the slot wears the best of what is left.
+- The missile's flat 2 (1 + spell level) is on the attack die: it is blocked and doubled with the rest, and the crit is judged on the MAG roll alone. It still costs 2 MP. Heal is unchanged, so bigger staffs heal a little more.
 - Hold to attack repeats the sword, the ranged weapon and the spell. It never talks, opens a chest or eats.
 - A button holds up to four keys. A key moves to the button it is given to.
 - Game pad: the bottom face button swings on Xbox and PlayStation pads, the right one on Nintendo pads, so the letter on screen is the letter on the pad. START is the bag and SELECT is the map. Shoulder buttons do nothing. Pad buttons cannot be remapped.

@@ -7,7 +7,9 @@
 // and steel swords carry the main game's values. Shields, armor and the top
 // tier are scaled down (MINI), because the Mini reaches Star City around level
 // 20, not level 50, and a 20 DEF shield at level 3 ends the Grassy Field.
-// Prices past the Basic Shop are the Mini's own for the same reason.
+// Prices past the Basic Shop are the Mini's own for the same reason. Staffs
+// past the Basic Staff are the Mini's too: a spell is blocked here like any
+// other hit, so a staff carries the same number as the sword and bow beside it.
 
 export const ITEMS = {
   // swords (STR)
@@ -20,7 +22,6 @@ export const ITEMS = {
 
   // ranged (DEX). A bow shoots straight; the boomerang comes back.
   boomerang: { name: 'Boomerang', slot: 'ranged', dex: 3 },
-  'wooden-bow': { name: 'Wooden Bow', slot: 'ranged', dex: 8, arrow: true },
   'long-bow': { name: 'Long Bow', slot: 'ranged', dex: 11, arrow: true },
   'iron-bow': { name: 'Iron Bow', slot: 'ranged', dex: 18, arrow: true, value: 800 },
   'steel-bow': { name: 'Steel Bow', slot: 'ranged', dex: 27, arrow: true, value: 2400 }, // MINI (33)
@@ -38,11 +39,11 @@ export const ITEMS = {
   'iron-armor': { name: 'Iron Armor', slot: 'armor', def: 16, value: 900 },         // MINI (30)
   'steel-armor': { name: 'Steel Armor', slot: 'armor', def: 26, value: 2600 },      // MINI (60)
 
-  // staffs (MAG)
+  // staffs (MAG). Equal to the swords and bows, tier for tier.
   'basic-staff': { name: 'Basic Staff', slot: 'staff', mag: 3, value: 200 },
-  wand: { name: 'Wand', slot: 'staff', mag: 9 },
-  'iron-staff': { name: 'Iron Staff', slot: 'staff', mag: 12, value: 800 },         // MINI (10, +3 STR)
-  'steel-staff': { name: 'Steel Staff', slot: 'staff', mag: 22, value: 2400 },
+  'wooden-staff': { name: 'Wooden Staff', slot: 'staff', mag: 3 },                  // MINI (5, +1 STR)
+  'iron-staff': { name: 'Iron Staff', slot: 'staff', mag: 18, value: 800 },         // MINI (10, +3 STR)
+  'steel-staff': { name: 'Steel Staff', slot: 'staff', mag: 27, value: 2400 },      // MINI (22)
 
   // food and potions
   redberry: { name: 'Redberry', plural: 'Redberries', use: { hp: 5 }, value: 10, icon: 'redberry', cap: 20 },

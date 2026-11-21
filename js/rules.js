@@ -28,13 +28,19 @@ export function isCrit(roll, max) {
 /**
  * The player's own hit: the same opposed roll, with both ranges kept so the
  * dice can be shown, and doubled when the attack roll is a crit.
+ *
+ * `flat` is what a spell adds on top of its roll. It is part of the attack die,
+ * so it is blocked and doubled with the rest, but the crit is judged on the
+ * roll alone: a bigger flat does not crit more often.
  */
-export function strike(off, def, r = Math.random) {
+export function strike(off, def, r = Math.random, flat = 0) {
   const roll = opposedRoll(off, def, r);
-  const crit = roll.dmg > 0 && isCrit(roll.a, off);
+  const a = roll.a + flat;
+  const dmg = Math.max(0, a - roll.d);
+  const crit = dmg > 0 && isCrit(roll.a, off);
   return {
-    ...roll, crit, dmg: crit ? roll.dmg * 2 : roll.dmg,
-    aMax: Math.max(0, Math.floor(off)), dMax: Math.max(0, Math.floor(def)),
+    a, d: roll.d, crit, dmg: crit ? dmg * 2 : dmg,
+    aMax: flat + Math.max(0, Math.floor(off)), dMax: Math.max(0, Math.floor(def)),
   };
 }
 
@@ -128,12 +134,19 @@ export function enemyHit(enemy, stats, r = Math.random) {
   return opposedRoll(enemy.att, def, r);
 }
 
-/** Spell numbers, from the main game's registry at spell level 1. */
+/**
+ * Spell numbers, from the main game's registry at spell level 1.
+ *
+ * Magic Missile is a hit like a sword's or an arrow's: 1 + level + a MAG roll,
+ * blocked by the enemy's DEF roll, and a top roll crits. In the main game
+ * nothing blocks it yet; the Mini went first, when staffs were made equal to
+ * swords and bows.
+ */
 export const SPELLS = {
   missile: {
-    name: 'Magic Missile', mp: 2, kind: 'shot',
-    blurb: '1 + level + a MAG roll. Nothing blocks it.',
-    roll(mag, r = Math.random) { return 2 + rand(0, Math.max(0, mag), r); },
+    name: 'Magic Missile', mp: 2, kind: 'shot', flat: 2,
+    blurb: 'DRAFT|1 + level + a MAG roll. DEF blocks it.',
+    roll(mag, def = 0, r = Math.random) { return strike(mag, def, r, this.flat); },
   },
   heal: {
     name: 'Heal', mp: 2, kind: 'heal',
@@ -241,6 +254,23 @@ export function takeGear(player, slug) {
     return true;
   }
   return false;
+}
+
+/**
+ * A save can hold things the game has since dropped (the Wooden Bow, the
+ * Wand). They are taken out, and a slot that was wearing one wears the best of
+ * what is left.
+ */
+export function dropLostItems(player) {
+  for (const slug of Object.keys(player.owned)) if (!ITEMS[slug]) delete player.owned[slug];
+  for (const slug of Object.keys(player.bag)) if (!ITEMS[slug]) delete player.bag[slug];
+  if (player.quick && !ITEMS[player.quick]) player.quick = null;
+  for (const slot of GEAR_SLOTS) {
+    if (!player.gear[slot] || ITEMS[player.gear[slot]]) continue;
+    player.gear[slot] = null;
+    for (const slug of Object.keys(player.owned)) if (ITEMS[slug].slot === slot) takeGear(player, slug);
+  }
+  return player;
 }
 
 export function addItem(player, slug, n = 1) {

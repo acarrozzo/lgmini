@@ -58,7 +58,7 @@ export const QUESTS = {
     remind: "That gator is still out there in the swamp. Head west into the marsh and deal with it when you're ready.",
     done: "Nice work Wanderer! That gator had it comin'!",
     early: "DRAFT|That gator out in the marsh. Wait, you already dealt with it? Nice work Wanderer! That gator had it comin'!",
-    reward: { gold: 30, xp: 20 },
+    reward: { gold: 30, xp: 20, items: [['wooden-staff', 1]] },   // main game: no item
   },
 };
 
@@ -136,7 +136,7 @@ Object.assign(QUESTS, {
     remind: 'Remember, bats fly, you need a ranged weapon to hit them. Equip your boomerang and get back in there!',
     done: 'Five wings, nice haul! And remember, any enemy that flies is out of reach of a sword. Always keep a ranged weapon handy for those.',
     early: 'DRAFT|I was going to send you into the Bat Cave for 5 Bat Wings. You already have them? Five wings, nice haul! Then you already know. Anything that flies is out of reach of a sword. Always keep a ranged weapon handy.',
-    reward: { gold: 100, xp: 50, items: [['wooden-bow', 1]] },   // main game: Green Boots; the bow is his next lesson there
+    reward: { gold: 100, xp: 50, items: [['long-bow', 1]] },   // main game: Green Boots, and the Long Bow comes off the Goblin Chief
   },
   jack_000: {
     giver: 'jack', title: "The Chief's Cloak", after: ['jack_001'],
@@ -146,15 +146,6 @@ Object.assign(QUESTS, {
     done: "Well I'll be! You actually got it! The Forest Path east of here is all yours now, Wanderer. Go see what's out there.",
     early: "DRAFT|Next job, the Goblin Chief's cloak. Hold on. Is that it in your bag? Well I'll be! You got it before I asked! The Forest Path east of here is all yours now, Wanderer. Go see what's out there.",
     reward: { gold: 300, xp: 200, items: [['battle-axe', 1]] },
-  },
-  grand_field: {
-    giver: 'guardian_angel', title: 'Savior of the Grassy Field',
-    objective: 'Complete every quest in the Grassy Field, then return to the Guardian Angel.',
-    need: { quests: ['oldman_003', 'soldier_002', 'jack_000'] },
-    remind: 'The Field first.',
-    done: 'The Field is safe. The Pillar noticed. Red Town and the Forest are next.',
-    early: 'DRAFT|But you already have. All of them. The Field is safe. The Pillar noticed. Red Town and the Forest are next.',
-    reward: { gold: 300, xp: 200 },
   },
   warriors_000: {
     giver: 'warriors_recruiter', title: 'Defeat the Ogre Lieutenant',
@@ -170,9 +161,10 @@ Object.assign(QUESTS, {
     objective: 'Defeat the Kobold Master.',
     need: { kills: ['kobold-master', 1] },
     remind: '"The Kobold Master still holds his chambers. In the Forest. Magic will serve you better than steel down there."',
-    done: '"Then you are one of us." The recruiter hands you a wand with no ceremony whatsoever. "Signing bonus. The guild\'s spells are open to you."',
-    early: 'DRAFT|"The Kobold Master has already fallen? To you? Before I asked. Then you are one of us." The recruiter hands you a wand with no ceremony whatsoever. "Signing bonus. The guild\'s spells are open to you."',
-    reward: { gold: 300, xp: 500, items: [['wand', 1]] },         // main game: a Wizard Staff and a Wizard Hat
+    // The main game's line hands over a wand. The Mini pays a staff, so that one word is changed.
+    done: '"Then you are one of us." The recruiter hands you a staff with no ceremony whatsoever. "Signing bonus. The guild\'s spells are open to you."',
+    early: 'DRAFT|"The Kobold Master has already fallen? To you? Before I asked. Then you are one of us." The recruiter hands you a staff with no ceremony whatsoever. "Signing bonus. The guild\'s spells are open to you."',
+    reward: { gold: 300, xp: 500, items: [['iron-staff', 1]] },   // main game: a Wizard Staff and a Wizard Hat
   },
   ranger_001: {
     giver: 'ranger_guard', title: 'Protect the Mountain Path',
@@ -181,7 +173,7 @@ Object.assign(QUESTS, {
     remind: '"They can be found patrolling the stone path to the mountains, and one of them is standing right at the toll."',
     done: 'DRAFT|"You have indeed defeated them." The Ranger Guard steps off the road. "The forest is yours. Mind the trolls."',
     early: 'DRAFT|"A Bowman and a Highwayman. That was going to be the job. You have already defeated them? Huh." The Ranger Guard steps off the road. "The forest is yours. Mind the trolls."',
-    reward: { gold: 400, xp: 600 },
+    reward: { gold: 400, xp: 600, items: [['iron-bow', 1]] },
   },
   rigel_001: {
     giver: 'rigel', title: 'Open the Gate',
@@ -194,7 +186,6 @@ Object.assign(QUESTS, {
   },
 });
 
-PEOPLE.guardian_angel.quests = ['grand_field'];
 
 Object.assign(PEOPLE, {
   jack: {

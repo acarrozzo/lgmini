@@ -527,7 +527,7 @@ export class Game {
 
   /**
    * Show the dice of a hit over whatever it hit: the attack roll on the left,
-   * the block on the right (none for a spell nothing blocks). They tumble for a
+   * the block on the right (none when nothing blocks it). They tumble for a
    * moment, meet, and the damage number comes out underneath.
    */
   clash(cx, y, roll, colorA, colorD = 'K') {
@@ -945,8 +945,8 @@ export class Game {
         } else {
           s.dead = true;
           const spell = R.SPELLS[s.spell];
-          const dmg = spell.roll(stats.mag);
-          this.hurtMob(m, dmg, dir, [[spell.name, 'L'], [m.def.name, 'a'], [`${dmg}`, '9']], { a: dmg, aMax: 2 + Math.max(0, stats.mag) }, 'L');
+          const roll = spell.roll(stats.mag, m.def.def);
+          this.hurtMob(m, roll.dmg, dir, rollFeed(spell.name, 'L', m.def.name, roll, 'L'), roll, 'L');
         }
       }
     }
