@@ -333,8 +333,11 @@ test('mini: everything the data names can be drawn', async () => {
       if (t.sprite) assert.ok(THING_SPRITES.has(t.sprite), `room ${id}: unknown sprite ${t.sprite}`);
       if (t.heldSprite) assert.ok(THING_SPRITES.has(t.heldSprite), `room ${id}: unknown sprite ${t.heldSprite}`);
       if (t.look) assert.ok(LOOKS[t.look], `room ${id}: unknown look ${t.look}`);
+      // A look with a body of its own has side views only. It can fight, not stand and talk.
+      if (t.look) assert.ok(!LOOKS[t.look].body, `room ${id}: ${t.look} has no way to stand and talk`);
     }
   }
+  for (const [id, person] of Object.entries(PEOPLE)) assert.ok(!LOOKS[person.look].body, `${id}: ${person.look} has no way to stand and talk`);
 });
 
 test('mini: a fight takes a sane number of swings at the level you meet it', async () => {
@@ -948,4 +951,126 @@ test('mini: the wind sways and a gust crosses the room', async () => {
   assert.ok(low < -0.5 && low >= -0.71, 'it leans things back a little');
   assert.ok(high > 1.5 && high <= 2.31, 'and a gust leans them over');
   assert.ok(gustX(0) < 0 && gustX(300) > 150, 'the gust comes in from the left and goes out the right');
+});
+
+test('mini: the line is the deep shade of what it wraps, and light is a step on a ramp', async () => {
+  const { PAL, INK, RAMPS, LIGHTER, DARKER, Buf } = await load('gfx.js');
+  const { lightFromAbove, inkLine } = await load('art-sprites.js');
+  const luma = (k) => { const h = PAL[k]; return parseInt(h.slice(1, 3), 16) * 0.299 + parseInt(h.slice(3, 5), 16) * 0.587 + parseInt(h.slice(5, 7), 16) * 0.114; };
+  for (const ramp of RAMPS) for (const k of ramp) assert.ok(PAL[k], `ramp color ${k} is in the palette`);
+  for (const [k, ink] of Object.entries(INK)) {
+    assert.ok(PAL[k] && PAL[ink], `ink ${k} -> ${ink} are both in the palette`);
+    assert.ok(luma(ink) < luma(k), `the line beside ${k} is darker than ${k}`);
+  }
+  for (const [k, up] of Object.entries(LIGHTER)) assert.ok(luma(up) > luma(k), `${up} is lighter than ${k}`);
+  for (const [k, down] of Object.entries(DARKER)) assert.ok(luma(down) < luma(k), `${down} is darker than ${k}`);
+
+  // A column of one color: its top catches the light and its underside loses it.
+  const tall = new Buf(3, 7);
+  tall.rect(1, 1, 1, 5, 'n');
+  assert.deepEqual(lightFromAbove(tall).rows().map((r) => r[1]), ['.', 'N', 'n', 'n', 'n', 'B', '.']);
+  // Two pixels are not a mass. A leg stays a leg.
+  const thin = new Buf(3, 4);
+  thin.rect(1, 1, 1, 2, 'n');
+  assert.deepEqual(lightFromAbove(thin).rows().map((r) => r[1]), ['.', 'n', 'n', '.']);
+
+  // A red block with a black eye: ringed in dark red, one pixel, and the eye stays black.
+  const blob = new Buf(5, 5);
+  blob.rect(1, 1, 3, 3, 'R');
+  blob.px(2, 2, '0');
+  assert.deepEqual(inkLine(blob, false).rows(), ['.rrr.', 'rRRRr', 'rR0Rr', 'rRRRr', '.rrr.']);
+  // A grid that drew its own line keeps that one line. Only color that pokes out past it is ringed,
+  // and a line that ends up inside the shape stays black.
+  const own = new Buf(7, 5);
+  own.rect(1, 1, 3, 3, '0');
+  own.px(2, 2, 'G');
+  own.px(4, 2, 'G');             // a hat brim, say, past the line
+  assert.deepEqual(inkLine(own, true).rows(), ['.......', '.ffff..', '.fG0Gf.', '.ffff..', '.......']);
+});
+
+test('mini: people have one line, room for what they carry, and bodies of their own', async () => {
+  const { LOOKS, BODIES, reach, personBuf, bodyBuf, creatureBufs } = await load('art-sprites.js');
+  const { ENEMIES } = await load('data/enemies.js');
+  const box = (b) => {
+    let x0 = b.w, x1 = -1, y0 = b.h, y1 = -1;
+    for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if (b.get(x, y) !== '.') { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    return [x0, y0, x1, y1];
+  };
+
+  // The hero is the plain person: 16 by 16, and his line is the one the grid drew, not a second ring around it.
+  assert.deepEqual(reach(LOOKS.hero), { ox: 0, oy: 0 });
+  const hero = personBuf(LOOKS.hero, 'downA', reach(LOOKS.hero));
+  assert.deepEqual([hero.w, hero.h], [16, 16]);
+  assert.deepEqual(box(hero), [2, 1, 13, 15]);
+  assert.equal(hero.get(8, 1), '3', 'the top of his hood is edged in gray, not black');
+
+  // The wizard's hat and staff reach past the person, and the sprite is baked with room for them.
+  const pad = reach(LOOKS.wizard);
+  assert.deepEqual(pad, { ox: 1, oy: 5 });
+  const wizard = personBuf(LOOKS.wizard, 'downA', pad);
+  assert.deepEqual([wizard.w, wizard.h], [18, 21]);
+  assert.equal(box(wizard)[1], 0, 'the line over the tip of his hat is there');
+  for (const [who, look] of Object.entries(LOOKS)) {
+    if (look.body) continue;
+    const r = reach(look);
+    for (const name of ['downA', 'upA', 'sideA']) {
+      const b = personBuf(look, name, r);
+      // Nothing but line touches the left, right or top of a sprite, or it was cut off there.
+      const side = name === 'sideA' ? 'side' : name.slice(0, -1);
+      for (const [x, y] of (look.over && look.over[side]) || []) {
+        assert.ok(x + r.ox >= 1 && x + r.ox <= b.w - 2 && y + r.oy >= 1, `${who}.${name}: the overlay at ${x},${y} has room for its line`);
+      }
+    }
+  }
+  // A person who fights is cut to 16 by 16 whatever they carry.
+  assert.deepEqual([personBuf(LOOKS.wizard, 'sideA').w, personBuf(LOOKS.wizard, 'sideA').h], [16, 16]);
+
+  // Bodies: each is the size it says, fills it to the feet, and no enemy doubles a brute or a lanky one.
+  for (const [who, look] of Object.entries(LOOKS)) {
+    if (!look.body) continue;
+    const body = BODIES[look.body];
+    assert.ok(body, `${who}: body ${look.body} exists`);
+    for (const name of ['sideA', 'sideB']) {
+      const b = bodyBuf(look, name);
+      assert.deepEqual([b.w, b.h], [body.w, body.h]);
+      assert.equal(box(b)[3], body.h - 1, `${who}.${name} stands on the bottom of its grid`);
+    }
+  }
+  assert.equal(LOOKS.goblin.body, 'small');
+  assert.equal(LOOKS.kobold_master.body, 'small');
+  assert.equal(LOOKS.ogre.body, 'brute');
+  assert.equal(LOOKS.ogre_lieutenant.body, 'hulk');
+  assert.equal(LOOKS.troll.body, 'brute');
+  assert.equal(LOOKS.troll_shaman.body, 'lanky');
+  assert.equal(LOOKS.ice_troll.body, 'lanky');
+  assert.equal(LOOKS.troll_king.body, 'hulk');
+  // The Troll King is drawn at 32, the size he always was, so his fight is the same size. He stands over his elder.
+  assert.deepEqual([BODIES.hulk.w, BODIES.hulk.h], [32, 32]);
+  assert.ok(!ENEMIES['troll-king'].big, 'and he is not doubled on top of that');
+  assert.ok(BODIES.hulk.h > BODIES[LOOKS[ENEMIES['troll-elder'].look].body].h);
+  assert.equal(box(bodyBuf(LOOKS.troll_king, 'sideA'))[1], 1, 'the line over the points of his crown fits in the grid');
+  // The Ogre Lieutenant is the same 32, a third bigger than the ogres he leads, and not doubled either.
+  assert.ok(!ENEMIES['ogre-lieutenant'].big);
+  assert.ok(BODIES[LOOKS[ENEMIES['ogre-lieutenant'].look].body].h > BODIES[LOOKS[ENEMIES.ogre.look].body].h);
+  assert.equal(box(bodyBuf(LOOKS.ogre_lieutenant, 'sideA'))[1], 1, 'the line over his crest fits in the grid');
+  // His armor is not the color of the floor he stands on.
+  const { THEMES } = await load('art-tiles.js');
+  assert.notEqual(LOOKS.ogre_lieutenant.T, THEMES.ogrelair.ground);
+  for (const [slug, def] of Object.entries(ENEMIES)) {
+    const body = def.look && LOOKS[def.look].body;
+    if (body === 'brute' || body === 'lanky' || body === 'hulk') assert.ok(!def.big, `${slug} is drawn at its own size and must not be doubled`);
+  }
+  // The Ogre is 24 tall now, where the hero is 16 and it used to be 32.
+  assert.ok(!ENEMIES.ogre.big && BODIES[LOOKS[ENEMIES.ogre.look].body].h === 24);
+
+  // The Giant Rat is its own drawing and longer than the Rat. A rat's line is brown and only its eye is black.
+  const [rat] = creatureBufs('rat');
+  const [giant] = creatureBufs(ENEMIES['giant-rat'].sprite);
+  assert.deepEqual([rat.w, giant.w, giant.h], [16, 24, 16]);
+  const wide = (b) => box(b)[2] - box(b)[0] + 1;
+  assert.ok(wide(giant) >= wide(rat) + 6, 'the Giant Rat is plainly longer than the Rat');
+  const air = (b, x, y) => [[0, -1], [1, 0], [0, 1], [-1, 0]].some(([dx, dy]) => b.get(x + dx, y + dy) === '.');
+  for (let y = 0; y < rat.h; y++) for (let x = 0; x < rat.w; x++) assert.ok(rat.get(x, y) !== '0' || !air(rat, x, y), `the rat is edged in black at ${x},${y}`);
+  assert.ok(rat.d.includes('b'), 'its edge is the dark brown of its coat');
+  assert.equal(rat.get(12, 8), '0', 'and its eye is still black');
 });

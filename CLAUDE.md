@@ -58,6 +58,9 @@ Things to know:
 - A new setting is a row in `js/data/settings.js`. It is saved, cleaned and reset from that row. Read it as `settings.key` from `state.js`.
 - Settings, changed keys and the best time share one stored object, `lgmini.prefs.v1`. Esc is fixed to the bag and cannot be moved, and no button can lose its last key, so no set of keys locks the player out.
 - All art uses the one palette in `gfx.js`. There are no image or sound files.
+- Nothing that lives is outlined in black. When a sprite is baked it is lit from above (`lightFromAbove`) and its line takes the deep shade of the color it wraps (`inkLine`), both in `js/art-sprites.js`. The ramps and the `INK` table they read are beside the palette in `gfx.js`. Objects (signs, chests, houses) are not touched by either.
+- A look is the person in other colors, or it names a `body` of its own in `BODIES`: `small` (16 by 16), `lanky` (16 by 24), `brute` (24 by 24) or `hulk` (32 by 32, for the Ogre Lieutenant and the Troll King). A body has side views only, so a look with one can fight but cannot stand and talk, and a test says so. An enemy is the size of its grid, and where it stands, its hit box and its shadow all follow that. `big` in `enemies.js` doubles it.
+- A person's overlays may reach past the 16 by 16 person (a hat, a spear). `reach` says how far, the sprite is baked that much bigger, and its set carries `ox` and `oy`. Whoever draws a person starts that far up and to the left.
 - A room's ground is painted once (`paintRoom` in `js/art-tiles.js`). Trees, flowers and tall grass are not in that picture. They are handed back as lists and drawn each frame, so they can move.
 - What a region looks like beyond its tiles is a row in `js/data/regions.js`, keyed by theme: its hour, whether it is dark, its wind, what lives in its air. A new theme needs a row there, and a test says so. What gives off light is in the same file, keyed by sprite.
 - The field is drawn off screen, the light is laid over it, and then it goes on the screen. Whatever has to stay readable (the dice, the numbers, the boss bar, the HUD) is drawn after the light.
@@ -71,7 +74,7 @@ Things to know:
 npm test
 ```
 
-The tests cover the rules, the world validator (every exit has a way back, every room and object can be reached, no two rooms share a cell), the art grids, the room painters, the regions, the light, the songs, and a swings-to-kill balance check. Add a test beside any rule you change.
+The tests cover the rules, the world validator (every exit has a way back, every room and object can be reached, no two rooms share a cell), the art grids, the line and the bodies, the room painters, the regions, the light, the songs, and a swings-to-kill balance check. Add a test beside any rule you change.
 
 In a browser:
 
@@ -110,6 +113,7 @@ Chosen by Anthony:
 - Equipment is equal across the three attacks: a staff is worth what the sword and bow of its tier are. Magic Missile is a hit like the others, blocked by a full DEF roll, and a top roll crits. He picked this on 2026-11-20 over a block by half of DEF with no crits.
 - Where gear comes from, set by him on 2026-11-20 from a chart of the whole road. The Long Sword is in the chest in the Spider Cave room with the scorpions, not on the Alpha Scorpion. The Gator quest pays a Wooden Staff worth 3. Jack's bat quest pays the Long Bow and his cloak quest pays the Battle Axe, so the Goblin Chief hands over nothing. The Kobold Master quest pays the Iron Staff, the same tier as the Warriors' Iron Sword. The Ranger Guard's quest pays the Iron Bow. There is no Wooden Bow, no Wand, and no Savior of the Grassy Field quest; the Guardian Angel still talks.
 - The look. On 2026-11-20 he was shown a live page of options running on the game's own rooms, in four directions (Alive, Lit, Repainted, Arcade), and took all of it. Wind in the trees, the flowers and the tall grass, and gusts over the ground. Water that ripples in to shore. People who breathe and blink. Footsteps. Each region's own life (butterflies, leaves, shafts of sun, fireflies, fog, snow, bubbles, drips). Shadows under feet and under clouds. Glow from fires and pillars. Dark caves where the hero carries the only light. An hour of the day for each region. Richer tiles. A held frame and a spark on a hit, and enemies that burst into their own pixels and drop coins. CRT and handheld screens beside the scanlines.
+- How the hero, the people and the enemies are drawn. On 2026-11-20 he was shown a second live page, of sprite options in the game's own rooms, and picked these: a colored line; a lit top and a dark underside; own bodies, with people carrying things; the Wanderer as he is; the Ogre on its own body at 24 by 24; the Giant Rat as its own drawing, 24 wide. He left Taller people (16 by 24) off, and passed on the gold scarf and the gray cloak for the Wanderer. He had asked for the Ogre smaller and the Giant Rat bigger. The same night he asked for the Troll King to be drawn on a body of his own, and the next day for the Ogre Lieutenant to be drawn bigger than his ogres.
 
 Declined, do not bring back:
 
@@ -118,7 +122,17 @@ Declined, do not bring back:
 Claude's calls he has not confirmed:
 
 - Wings and Gills are bought once at the Wizard's Guild and kept. The toll is 300 gold.
-- Bosses are the 16-pixel sprites doubled.
+- A boss with no drawing of its own is its kind doubled. The Goblin Chief and the Kobold Master are the small body doubled. The Highwayman at the toll and the two giants are still the person doubled. The Ogre Lieutenant and the Troll King are not doubled. They share a body drawn at 32 by 32.
+- The sprites, built 2026-11-20 from the page he picked on. He chose what; these are how, and every drawing is a first draft.
+  - The bodies: goblins and kobolds are `small`, the Troll Shaman and the Ice Troll are `lanky`, the Ogre and the Troll Elder are `brute`, the Ogre Lieutenant and the Troll King are `hulk`. The page showed the first three bodies, and the Lieutenant on the brute at 24.
+  - The Troll King: he asked for him to be drawn, and how is mine. A grid at 32 by 32, the size he was when he was the person doubled, so his fight and his place on the ending card are the same size as before. The brute's build under a red robe, with a gold belt, a crown, a white fur collar and two tusks. He saw a picture of it after it was built, not before.
+  - The Ogre Lieutenant: he asked for him bigger than his ogres, and how is mine. The same 32 by 32 grid as the King, which is also the size the Lieutenant was before any of this, so his fight is the size it always was. A helmet with a red crest, a plate over his back, a red belt. His armor went one step lighter, from `3` to `4`, because `3` is the floor of his lair and he was a hole in it. He was sent a picture with three other armors (dark red, leather, and as dark as he was) after it was built.
+  - What people carry: the Old Man a cane, Jack a knit cap and his axe, the wizards a pointed hat, a robe and a staff, the warriors a helmet, a shield and a sword, the Shopkeeper an apron and a mustache, the Red Guard a spear and a shield. The Green Guard, Captain Hector and the Young Soldier got the spear and shield too, though the page only showed the Red Guard.
+  - People used to be outlined twice, by their grid and again by the baker, so they had two pixels of line where animals had one. Now everyone has one.
+  - A sprite that reaches the top or the side of the person (the angel's halo and wings, a plume) gets its line there too, where it used to be cut off.
+  - The Ogre and the Troll Elder are smaller on screen, so they are smaller to hit and to dodge. The Giant Rat is wider to hit. No number changed.
+  - The shadow under a 24 pixel body is half again the small one.
+  - The Giant Spider and the Alpha Scorpion are still the small ones in other colors, at the same size.
 - A crit is a roll in the top tenth of its range and doubles the damage. Enemies do not crit.
 - Eight pines at Jack's farm though he allows only ten wood. Two wood a tree.
 - The achievement for finding every room is named "Been Everywhere" and pays 1000 gold. The Plane of Rebirth does not count toward it.

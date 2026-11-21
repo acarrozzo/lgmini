@@ -1,9 +1,13 @@
 // Light Gray Mini: characters, creatures, objects and effects.
 // Grids are rows of palette keys (see gfx.js). Rows may stop early; the rest
 // of the row is empty. People share one body template and differ by a color
-// map and a few overlay pixels, the way 16-bit games did it.
+// map and a few overlay pixels, the way 16-bit games did it. What fights on two
+// legs but is not built like a person has a body of its own (see BODIES).
+//
+// Nothing that lives is outlined in black. Its line is the deep shade of the
+// color it wraps, and it is lit from above (see the line and the light).
 
-import { Buf, bake, flipH, rotate, scale2, tint } from './gfx.js';
+import { Buf, bake, flipH, rotate, scale2, tint, LIGHTER, DARKER, INK } from './gfx.js';
 
 // ------------------------------------------------------------ the person
 // Roles: O outline, H hair/hood, h its shade, F face, f face shade, E eyes,
@@ -120,9 +124,226 @@ const HUMAN = {
   ],
 };
 
+// ------------------------------------------------------------ other bodies
+// What fights on two legs but is not built like a person. An enemy on the map
+// only ever faces left or right, so these have side views and nothing else.
+// Same roles as the person. Each is drawn at the size it is, never doubled.
+//   small  16 by 16. Goblins and kobolds: hunched, with an ear that points back.
+//   lanky  16 by 24. Trolls: the person's head on a body twice as long.
+//   brute  24 by 24. Ogres: a back like a hill and arms to the knees.
+//   hulk   32 by 32. The ones in charge: the brute grown by a third. The Ogre
+//          Lieutenant wears it as armor and the Troll King as a robe.
+export const BODIES = {
+  small: {
+    w: 16, h: 16,
+    sideA: [
+      '', '', '',
+      '.OOO',
+      '.OHHO.OOOOO',
+      '..OHHOHHHHHO',
+      '...OHHHHHFFFO',
+      '...OHHhHFFEFO',
+      '....OhhFFFFFFO',
+      '....OhffFFFOO',
+      '....OOTTTCOO',
+      '...OTTTATTTO',
+      '...OTtTAAOO',
+      '...OOtTTTOO',
+      '....OLLOLLO',
+      '....OllOllO',
+    ],
+    sideB: [
+      '', '', '',
+      '.OOO',
+      '.OHHO.OOOOO',
+      '..OHHOHHHHHO',
+      '...OHHHHHFFFO',
+      '...OHHhHFFEFO',
+      '....OhhFFFFFFO',
+      '....OhffFFFOO',
+      '....OOTTTCOO',
+      '...OTTTTATTO',
+      '...OTtTTAAO',
+      '...OOtTTTOO',
+      '...OLLOOLLO',
+      '..OllO..OllO',
+    ],
+  },
+  lanky: {
+    w: 16, h: 24,
+    sideA: [
+      ...HUMAN.sideA.slice(0, 9),
+      '....OOTTTTOO',
+      '....OTTTTTTO',
+      '....OTTtTTTO',
+      '....OTTtTTTO',
+      '....OTTtTTTO',
+      '....OTTAATTO',
+      '....OTtAATTO',
+      '....OOCCCCOO',
+      '.....OLLLLO',
+      '.....OLLLLO',
+      '.....OLLLLO',
+      '.....OLLLLO',
+      '.....OllllO',
+      '.....OlllllO',
+      '......OOOOO',
+    ],
+    sideB: [
+      ...HUMAN.sideB.slice(0, 9),
+      '....OOTTTTOO',
+      '....OTTTTTTO',
+      '....OTTtTTTO',
+      '....OTTTtTTO',
+      '....OTTTtTTO',
+      '....OTTTTAAO',
+      '....OTtTTAAO',
+      '....OOCCCCOO',
+      '.....OLLLLO',
+      '....OLLLLLLO',
+      '....OLLOOLLO',
+      '...OLLO..OLLO',
+      '...OllO..OllO',
+      '...OllO..OlllO',
+      '....OO....OOO',
+    ],
+  },
+  brute: {
+    w: 24, h: 24,
+    sideA: [
+      '', '', '',
+      '......OOOOOOO',
+      '....OOTTTTTTTOO',
+      '...OTTTTTTTTTTTOOOOOO',
+      '..OTTTTTTTTTTTOHHHHHHO',
+      '..OTTTTTTTTTTOHHHHHHHHO',
+      '.OTTTTTTTTTTTOHHFFFFFFO',
+      '.OTtTTTTTTTTTOHFFFEEFFO',
+      '.OTtTTTTTOOOTOhFFFFFFFFO',
+      '.OTtTTTTOAAAOTOfFFFFFFFO',
+      '.OTttTTTOAAAAOTOffFFFFO',
+      '.OTttTTTOAAAAOTTOOOOOO',
+      '..OTttTTOAAAAOTTTTO',
+      '..OTtttTOAAAAOTTTTO',
+      '...OCCCCOAAAAOCCCO',
+      '...OCCCCOAAAAOCCCO',
+      '...OLLLLOAAAAOLLLO',
+      '...OLLLLOAAAAOLLLO',
+      '...OLLLLLOOOOLLLLO',
+      '...OLLLLO..OLLLLO',
+      '..OllllllO.OlllllO',
+      '..OOOOOOOO.OOOOOOO',
+    ],
+    sideB: [
+      '', '', '',
+      '......OOOOOOO',
+      '....OOTTTTTTTOO',
+      '...OTTTTTTTTTTTOOOOOO',
+      '..OTTTTTTTTTTTOHHHHHHO',
+      '..OTTTTTTTTTTOHHHHHHHHO',
+      '.OTTTTTTTTTTTOHHFFFFFFO',
+      '.OTtTTTTTTTTTOHFFFEEFFO',
+      '.OTtTTTTTTOOOOhFFFFFFFFO',
+      '.OTtTTTTTOAAAOOfFFFFFFFO',
+      '.OTttTTTTOAAAAOOffFFFFO',
+      '.OTttTTTTOAAAAOTOOOOOO',
+      '..OTttTTTOAAAAOTTTO',
+      '..OTtttTTOAAAAOTTTO',
+      '...OCCCCCOAAAAOCCO',
+      '...OCCCCCOAAAAOCCO',
+      '...OLLLLOOAAAAOLLO',
+      '..OLLLLO.OAAAAOLLLO',
+      '..OLLLO...OOOOLLLLO',
+      '..OlllO.....OLLLLO',
+      '..OOOO.....OlllllO',
+      '...........OOOOOOO',
+    ],
+  },
+  hulk: {
+    w: 32, h: 32,
+    sideA: [
+      '', '', '', '',
+      '........OOOOOOOOO',
+      '......OOTTTTTTTTTOO.OOOOOOOO',
+      '....OOTTTTTTTTTTTTTOHHHHHHHHO',
+      '...OTTTTTTTTTTTTTTOHHHHHHHHHHO',
+      '..OTTTTTTTTTTTTTTTOHHHHHHHHHHHO',
+      '..OTTTTTTTTTTTTTTOHHHFFFFFFFFFO',
+      '.OTTTTTTTTTTTTTTTOHHFFfffffFFFO',
+      '.OTtTTTTTTTTTTTTTOHFFFFEEFFFFFO',
+      '.OTtTTTTTTTTTTTTTOhFFFFEEFFFFFFO',
+      '.OTtTTTTTTTOOOOOTOhFFFFFFFFFFFFO',
+      '.OTttTTTTTOAAAAAOTOfFFFFFFFFFFFO',
+      '.OTttTTTTOfAAAAAAOOffFFFFFFFFFFO',
+      '.OTttTTTTOfAAAAAAOTOffFFOOOOOOO',
+      '.OTtttTTTOfAAAAAAOTTOfffFFFFFFFO',
+      '..OTtttTTOfAAAAAAOTTTOffFFFFFFO',
+      '..OTtttTTOfAAAAAAOTTTTOOOOOOOO',
+      '..OTttttTOfAAAAAAOTTTTTO',
+      '...OTttttOffAAAAAOTTTTTO',
+      '...OCCCCCOfAAAAAAOCCCCCO',
+      '...OCCCCCOfAAAAAAOCCCCCO',
+      '...OLLLLLOfAAAAAAOLLLLLO',
+      '...OLLLLLOfAAAAAAOLLLLLO',
+      '...OLLLLLOAAAAAAAOLLLLLO',
+      '...OLLLLLLOOOOOOOLLLLLLO',
+      '...OLLLLLO.....OLLLLLLO',
+      '...OLLLLLO.....OLLLLLO',
+      '..OlllllllO....OlllllllO',
+      '..OOOOOOOOO....OOOOOOOOO',
+    ],
+    sideB: [
+      '', '', '', '',
+      '........OOOOOOOOO',
+      '......OOTTTTTTTTTOO.OOOOOOOO',
+      '....OOTTTTTTTTTTTTTOHHHHHHHHO',
+      '...OTTTTTTTTTTTTTTOHHHHHHHHHHO',
+      '..OTTTTTTTTTTTTTTTOHHHHHHHHHHHO',
+      '..OTTTTTTTTTTTTTTOHHHFFFFFFFFFO',
+      '.OTTTTTTTTTTTTTTTOHHFFfffffFFFO',
+      '.OTtTTTTTTTTTTTTTOHFFFFEEFFFFFO',
+      '.OTtTTTTTTTTTTTTTOhFFFFEEFFFFFFO',
+      '.OTtTTTTTTTTOOOOOOhFFFFFFFFFFFFO',
+      '.OTttTTTTTTOAAAAAOOfFFFFFFFFFFFO',
+      '.OTttTTTTTOfAAAAAAOffFFFFFFFFFFO',
+      '.OTttTTTTTOfAAAAAAOOffFFOOOOOOO',
+      '.OTtttTTTTOfAAAAAAOTOfffFFFFFFFO',
+      '..OTtttTTTOfAAAAAAOTTOffFFFFFFO',
+      '..OTtttTTTOfAAAAAAOTTTOOOOOOOO',
+      '..OTttttTTOfAAAAAAOTTTTO',
+      '...OTttttTOffAAAAAOTTTTO',
+      '...OCCCCCCOfAAAAAAOCCCCO',
+      '...OCCCCCCOfAAAAAAOCCCCO',
+      '...OLLLLLOOfAAAAAAOLLLLO',
+      '..OLLLLLO.OfAAAAAAOLLLLLO',
+      '..OLLLLO..OAAAAAAAOLLLLLO',
+      '..OLLLLO...OOOOOOOLLLLLLO',
+      '..OllllO........OLLLLLLO',
+      '..OOOOOO........OLLLLLO',
+      '................OlllllllO',
+      '................OOOOOOOOO',
+    ],
+  },
+};
+
 // A look is a color for every role, plus optional overlays stamped on top:
-// `over.down`, `over.up`, `over.side`, each a list of [x, y, key].
+// `over.down`, `over.up`, `over.side`, each a list of [x, y, key]. An overlay
+// may reach outside the 16 by 16 person: a hat above the head, a spear in the
+// hand. The sprite is baked with room for it and says how much (see reach).
+//   body  one of BODIES, for a look that is not a person. Only `over.side` is used.
+//   robe  the legs close up into one skirt, in the views that stand still.
 const row = (y, x, keys) => [...keys].map((k, i) => [x + i, y, k]).filter((p) => p[2] !== '.');
+const col = (x, y0, y1, k) => { const out = []; for (let y = y0; y <= y1; y++) out.push([x, y, k]); return out; };
+// What people carry. A round shield on the arm, in two colors.
+const shield = (x, y, a, c) => [...row(y, x + 1, '66'), ...row(y + 1, x, '6' + a + c + '6'), ...row(y + 2, x, '6' + c + a + '6'), ...row(y + 3, x + 1, '66')];
+// A spear as tall as its guard and four pixels more, in the right hand. From
+// behind it is on the other side, and from the side it is out in front.
+const spear = (x) => [...col(x, -2, 15, 'n'), [x, -4, '8'], ...row(-3, x - 1, '686'), [x, -2, '6']];
+const GUARD = (k, shieldColor) => ({
+  down: [...row(1, 7, k + k), ...row(4, 4, '44444444'), ...spear(14), ...shield(0, 9, shieldColor, 'Y')],
+  up: [...row(1, 7, k + k), ...spear(1)],
+  side: [...row(1, 7, k + k), ...spear(12)],
+});
 
 export const LOOKS = {
   // The Wanderer wears light gray. Of course.
@@ -132,21 +353,29 @@ export const LOOKS = {
     O: '0', H: 's', h: 'S', F: 's', f: 'S', E: '0', T: 'n', t: 'B', C: 'N', A: 's', L: 'B', l: 'b',
     over: {
       down: [...row(4, 4, '8......8'), ...row(5, 4, '88....88'), ...row(6, 4, '8......8'),
-        ...row(7, 5, '888888'), ...row(8, 5, '878878'), ...row(9, 6, '8778')],
+        ...row(7, 5, '888888'), ...row(8, 5, '878878'), ...row(9, 6, '8778'),
+        ...col(14, 9, 15, 'n'), ...row(8, 13, 'nn'), [12, 9, 'n']],          // his cane
       up: [...row(5, 4, '88888888'), ...row(6, 4, '88888888'), ...row(7, 4, '88888888'), ...row(8, 5, '888888')],
       side: [...row(5, 4, '888'), ...row(6, 4, '888'), ...row(7, 4, '88'),
-        ...row(7, 9, '888'), ...row(8, 8, '8788'), ...row(9, 9, '88')],
+        ...row(7, 9, '888'), ...row(8, 8, '8788'), ...row(9, 9, '88'),
+        ...col(13, 9, 15, 'n'), ...row(8, 12, 'nn')],
     },
   },
   young_soldier: {
     O: '0', H: '6', h: '4', F: 's', f: 'S', E: '0', T: 'w', t: 'U', C: 'Y', A: 's', L: '3', l: '1',
-    over: { down: [...row(1, 7, 'ww'), ...row(4, 4, '44444444')], up: [...row(1, 7, 'ww')], side: [...row(1, 7, 'ww')] },
+    over: GUARD('w', 'w'),
   },
   green_guard: {
     O: '0', H: '6', h: '4', F: 's', f: 'S', E: '0', T: 'G', t: 'g', C: 'Y', A: 's', L: '3', l: '1',
-    over: { down: [...row(1, 7, 'GG'), ...row(4, 4, '44444444')], up: [...row(1, 7, 'GG')], side: [...row(1, 7, 'GG')] },
+    over: GUARD('G', 'G'),
   },
-  shopkeeper: { O: '0', H: 'n', h: 'B', F: 's', f: 'S', E: '0', T: 'C', t: 'c', C: '8', A: 's', L: 'B', l: 'b' },
+  shopkeeper: {
+    O: '0', H: 'n', h: 'B', F: 's', f: 'S', E: '0', T: 'C', t: 'c', C: '8', A: 's', L: 'B', l: 'b',
+    over: {
+      down: [...row(10, 5, '888888'), ...row(11, 5, '878878'), ...row(12, 5, '888888'), ...row(8, 6, 'BBBB'), ...row(9, 5, '8....8')],
+      side: [...row(8, 10, 'BB'), ...row(10, 8, '88'), ...row(11, 8, '88')],
+    },
+  },
   shaman: {
     O: '0', H: 'P', h: 'p', F: 's', f: 'S', E: '0', T: 'W', t: 'w', C: '8', A: 's', L: 'W', l: 'w',
     over: {
@@ -166,34 +395,39 @@ export const LOOKS = {
       ],
     },
   },
-  goblin: {
-    O: '0', H: 'h', h: 'G', F: 'h', f: 'G', E: 'R', T: 'B', t: 'b', C: 'N', A: 'h', L: 'n', l: 'b',
-    over: {
-      down: [...row(5, 1, 'hh'), ...row(6, 2, 'h'), ...row(5, 13, 'hh'), ...row(6, 13, 'h')],
-      up: [...row(5, 1, 'hh'), ...row(6, 2, 'h'), ...row(5, 13, 'hh'), ...row(6, 13, 'h')],
-      side: [...row(5, 2, 'h'), ...row(4, 2, 'h')],
-    },
-  },
+  goblin: { O: '0', H: 'h', h: 'G', F: 'h', f: 'G', E: 'R', T: 'B', t: 'b', C: 'N', A: 'h', L: 'n', l: 'b', body: 'small' },
 };
 
-const HELM = (k) => ({ down: [...row(1, 7, k + k), ...row(4, 4, '44444444')], up: [...row(1, 7, k + k)], side: [...row(1, 7, k + k)] });
-const TUSKS = { down: [...row(8, 5, '8....8')], side: [...row(8, 11, '8')] };
-const CROWN = { down: [...row(1, 5, 'Y.YY.Y'), ...row(2, 5, 'YYYYYY')], up: [...row(1, 5, 'Y.YY.Y'), ...row(2, 5, 'YYYYYY')], side: [...row(1, 5, 'Y.YY.Y'), ...row(2, 5, 'YYYYYY')] };
-const both = (a, b) => ({ down: [...(a.down || []), ...(b.down || [])], up: [...(a.up || []), ...(b.up || [])], side: [...(a.side || []), ...(b.side || [])] });
+// A tusk on the person's head, seen from the side. The lanky trolls wear it.
+const TUSKS = { side: [...row(8, 11, '8')] };
+// A wizard's hat: a point that leans, a gold band and a wide brim. x is where the point is.
+const HAT = (x) => [...row(-4, x, 'U'), ...row(-3, 7, 'UU'), ...row(-2, 6, 'UUUu'), ...row(-1, 6, 'UUUu'), ...row(0, 5, 'UUUUUu'),
+  ...row(1, 5, 'UUUUUu'), ...row(2, 4, 'YYYYYYYY'), ...row(3, 2, 'UUUUUUUUUUUU')];
+// A warrior's helmet, with a red plume.
+const CASQUE = [...row(1, 5, '666666'), ...row(2, 4, '66666666'), ...row(3, 4, '66666666'), ...row(0, 7, 'RR'), ...row(-1, 7, 'RR')];
 const SKIN = { O: '0', F: 's', f: 'S', E: '0', A: 's' };
+const TROLL = { O: '0', H: 'C', h: 'c', F: 'C', f: 'c', E: 'Y', T: 'B', t: 'b', C: 'N', A: 'C', L: 'B', l: 'b' };
+// Where a brute's tusk shows: up out of the jaw, in front.
+const BRUTE_TUSKS = { side: [[20, 12, '8'], [20, 11, '8']] };
+// And a hulk's two: a long one, and a short one at the front of the jaw.
+const HULK_TUSKS = [[27, 16, '8'], [27, 15, '8'], [27, 14, '8'], [30, 16, '8'], [30, 15, '8']];
 
 Object.assign(LOOKS, {
   // ---- people along the road
   jack: {
     ...SKIN, H: 'B', h: 'b', T: 'R', t: 'r', C: 'b', L: 'U', l: 'b',
     over: {
-      down: [...row(8, 5, 'BBBBBB'), ...row(10, 4, 'r.r.r.r.'), ...row(11, 5, '.r.r.r')],
-      side: [...row(8, 9, 'BBB'), ...row(10, 5, 'r.r.r.')],
-      up: [...row(10, 4, 'r.r.r.r.')],
+      down: [...row(8, 5, 'BBBBBB'), ...row(10, 4, 'r.r.r.r.'), ...row(11, 5, '.r.r.r'),
+        ...row(1, 5, 'GGGGGG'), ...row(2, 4, 'GGGGGGGG'), ...row(3, 4, 'gggggggg'), ...row(7, 5, 'B....B'), ...row(9, 6, 'BBBB'),
+        [12, 9, 'n'], [13, 8, 'n'], [13, 7, 'n'], [14, 6, 'n'], [14, 5, 'n'],
+        ...row(2, 13, '66'), ...row(3, 13, '668'), ...row(4, 13, '668'), ...row(5, 13, '6')],
+      side: [...row(8, 9, 'BBB'), ...row(10, 5, 'r.r.r.'),
+        ...row(1, 5, 'GGGGGG'), ...row(2, 4, 'GGGGGGGG'), ...row(3, 4, 'gggggggg'), ...row(9, 9, 'BB')],
+      up: [...row(10, 4, 'r.r.r.r.'), ...row(1, 5, 'GGGGGG'), ...row(2, 4, 'GGGGGGGG'), ...row(3, 4, 'gggggggg')],
     },
   },
-  red_guard: { ...SKIN, H: '6', h: '4', T: 'R', t: 'r', C: 'Y', L: '3', l: '1', over: HELM('R') },
-  hector: { ...SKIN, H: '6', h: '4', T: 'U', t: 'u', C: 'Y', L: '3', l: '1', over: HELM('Y') },
+  red_guard: { ...SKIN, H: '6', h: '4', T: 'R', t: 'r', C: 'Y', L: '3', l: '1', over: GUARD('R', 'R') },
+  hector: { ...SKIN, H: '6', h: '4', T: 'U', t: 'u', C: 'Y', L: '3', l: '1', over: GUARD('Y', 'w') },
   dwarf_guard: {
     ...SKIN, H: '5', h: '3', T: '4', t: '2', C: 'Y', L: 'B', l: 'b',
     over: {
@@ -202,10 +436,23 @@ Object.assign(LOOKS, {
     },
   },
   wizard: {
-    ...SKIN, H: 'U', h: 'u', T: 'U', t: 'u', C: 'Y', L: 'U', l: 'u',
-    over: { down: [...row(0, 7, 'UU'), ...row(8, 5, '888888'), ...row(9, 6, '8888')], up: [...row(0, 7, 'UU')], side: [...row(0, 7, 'UU'), ...row(8, 9, '888')] },
+    ...SKIN, H: 'U', h: 'u', T: 'U', t: 'u', C: 'Y', L: 'U', l: 'u', robe: true,
+    over: {
+      down: [...row(8, 5, '888888'), ...row(9, 6, '8888'), ...HAT(8), ...row(4, 4, 'uuuuuuuu'), ...row(10, 6, '8778'), ...row(11, 7, '88'),
+        ...col(15, 2, 15, 'n'), ...row(0, 14, 'WW'), ...row(1, 14, 'iW')],
+      up: [...HAT(8)],
+      side: [...row(8, 9, '888'), ...HAT(7), ...row(10, 9, '87'), ...row(11, 10, '8')],
+    },
   },
-  warrior: { ...SKIN, H: 'n', h: 'B', T: 'R', t: 'r', C: '6', A: '6', L: '4', l: '2' },
+  warrior: {
+    ...SKIN, H: 'n', h: 'B', T: 'R', t: 'r', C: '6', A: '6', L: '4', l: '2',
+    over: {
+      down: [...CASQUE, ...row(4, 4, '44444444'), ...shield(0, 9, 'R', 'Y'),
+        ...col(14, 2, 8, '7'), [14, 1, '8'], ...row(9, 13, 'YYY'), [14, 10, 'n']],
+      up: [...CASQUE],
+      side: [...CASQUE, ...row(4, 8, '4444')],
+    },
+  },
   merchant: { ...SKIN, H: 'B', h: 'b', T: 'Y', t: 'y', C: 'B', L: 'B', l: 'b' },
   innkeeper: { ...SKIN, H: 'O', h: 'o', T: '8', t: '7', C: 'n', L: 'n', l: 'B' },
   pirate: { O: '0', H: 'R', h: 'r', F: 'S', f: 'n', E: '0', T: '8', t: '7', C: 'R', A: 'S', L: 'U', l: 'b' },
@@ -219,29 +466,51 @@ Object.assign(LOOKS, {
   pax: { O: '0', H: 'l', h: 'Y', F: 'k', f: 's', E: 'w', T: '8', t: '7', C: 'Y', A: 'k', L: '8', l: 'Y' },
 
   // ---- things that fight, drawn on the same body
-  goblin_chief: { ...LOOKS.goblin, T: 'R', t: 'r', C: 'Y', over: both(LOOKS.goblin.over, CROWN) },
-  ogre: { O: '0', H: 'D', h: 'n', F: 'D', f: 'n', E: '0', T: 'D', t: 'n', C: 'B', A: 'D', L: 'B', l: 'b', over: TUSKS },
+  // The chief is a goblin in red with a crown. He is the small body doubled (see `big` in enemies.js).
+  goblin_chief: { ...LOOKS.goblin, T: 'R', t: 'r', C: 'Y', over: { side: [...row(2, 6, 'Y.Y.Y'), ...row(3, 6, 'YYYYY')] } },
+  ogre: { O: '0', H: 'D', h: 'n', F: 'D', f: 'n', E: '0', T: 'D', t: 'n', C: 'B', A: 'D', L: 'B', l: 'b', body: 'brute', over: BRUTE_TUSKS },
+  // The lieutenant: an ogre a third bigger than his ogres, in iron. His armor is
+  // a step lighter than the floor of his lair, or he would be a hole in it.
   ogre_lieutenant: {
-    O: '0', H: 'D', h: 'n', F: 'D', f: 'n', E: 'R', T: '3', t: '2', C: 'R', A: 'D', L: '2', l: '1',
-    over: both(TUSKS, { down: [...row(1, 5, '444444'), ...row(2, 4, '44444444')], up: [...row(1, 5, '444444'), ...row(2, 4, '44444444')], side: [...row(1, 5, '444444'), ...row(2, 4, '44444444')] }),
+    O: '0', H: 'D', h: 'n', F: 'D', f: 'n', E: 'R', T: '4', t: '3', C: 'R', A: 'D', L: '2', l: '1', body: 'hulk',
+    over: { side: [
+      ...row(5, 20, '55555555'), ...row(6, 20, '56666555'), ...row(7, 19, '5666655555'), ...row(8, 19, '55555555555'),   // a helmet
+      ...row(9, 18, '333333333333'),                                                                                     // its dark rim
+      ...row(4, 20, 'RRRRRRR'), ...row(3, 21, 'RRRRR'), ...row(2, 22, 'RRR'),                                            // a red crest along the top
+      [24, 12, '0'], ...HULK_TUSKS,
+      ...row(5, 8, '666666666'), ...row(6, 6, '6666666666666'), ...row(7, 4, '55555555555555'),                          // a plate over his back
+      ...row(8, 3, '222222222222222'), [8, 7, '8'], [13, 7, '8'],                                                        // a seam under it, and two rivets
+    ] },
   },
+  // A kobold: the small body with a snout, two horns and a tail.
   kobold: {
-    O: '0', H: 'o', h: 'R', F: 'o', f: 'R', E: 'Y', T: 'n', t: 'B', C: 'N', A: 'o', L: 'B', l: 'b',
-    over: { down: [...row(0, 4, 'o......o'), ...row(1, 4, 'o......o')], up: [...row(0, 4, 'o......o'), ...row(1, 4, 'o......o')], side: [...row(0, 5, 'o'), ...row(1, 5, 'o')] },
+    O: '0', H: 'o', h: 'R', F: 'o', f: 'R', E: 'Y', T: 'n', t: 'B', C: 'N', A: 'o', L: 'B', l: 'b', body: 'small',
+    over: { side: [...row(8, 13, 'oo'), ...row(9, 12, 'R'), ...row(3, 8, 'Y.Y'), [2, 12, 'o'], [1, 13, 'o'], [1, 14, 'R']] },
   },
   bowman: { ...SKIN, H: 'g', h: 'f', T: 'B', t: 'b', C: 'g', L: '3', l: '2' },
   highwayman: {
     ...SKIN, H: '2', h: '1', T: '2', t: '1', C: 'R', A: '3', L: '2', l: '1',
     over: { down: [...row(7, 5, '222222'), ...row(8, 5, '222222')], side: [...row(7, 9, '222'), ...row(8, 9, '22')] },
   },
-  troll: { O: '0', H: 'C', h: 'c', F: 'C', f: 'c', E: 'Y', T: 'B', t: 'b', C: 'N', A: 'C', L: 'B', l: 'b', over: TUSKS },
-  ice_troll: { O: '0', H: 'i', h: 'W', F: 'i', f: 'W', E: 'U', T: 'W', t: 'w', C: '8', A: 'i', L: 'w', l: 'U', over: TUSKS },
+  // Trolls come in three builds. The elder is a brute, the shamans and the ice
+  // trolls are lanky, and the king is a hulk, as the Ogre Lieutenant is.
+  troll: { ...TROLL, body: 'brute', over: BRUTE_TUSKS },
+  ice_troll: { O: '0', H: 'i', h: 'W', F: 'i', f: 'W', E: 'U', T: 'W', t: 'w', C: '8', A: 'i', L: 'w', l: 'U', body: 'lanky', over: TUSKS },
   giant: { ...SKIN, H: 'n', h: 'B', T: '5', t: '3', C: 'n', L: '3', l: '2' },
 });
 LOOKS.kobold_warlock = { ...LOOKS.kobold, T: 'P', t: 'p', C: 'V', L: 'P', l: 'p' };
 LOOKS.kobold_master = { ...LOOKS.kobold, H: 'V', h: 'v', T: 'p', t: 'z', C: 'Y', L: 'p', l: 'z' };
-LOOKS.troll_shaman = { ...LOOKS.troll, T: 'P', t: 'p', C: 'V' };
-LOOKS.troll_king = { ...LOOKS.troll, T: 'R', t: 'r', C: 'Y', over: both(TUSKS, CROWN) };
+LOOKS.troll_shaman = { ...TROLL, T: 'P', t: 'p', C: 'V', body: 'lanky', over: TUSKS };
+// The Troll King: a red robe, a gold belt, a crown, a white fur collar and two tusks.
+LOOKS.troll_king = {
+  ...TROLL, T: 'R', t: 'r', C: 'Y', body: 'hulk',
+  over: { side: [
+    ...row(2, 20, 'Y..YY..Y'), ...row(3, 20, 'YYYYYYYY'), ...row(4, 20, 'YlYYYYlY'), ...row(5, 20, 'YYRYYRYY'),   // the crown
+    [24, 12, '0'],                                                                                                 // the eye he watches you with
+    ...HULK_TUSKS,                                                                                                 // tusks, up out of the jaw
+    ...row(6, 17, '87'), ...row(7, 16, '87'), ...row(8, 16, '85'), ...row(9, 15, '87'), ...row(10, 15, '87'), ...row(11, 15, '58'), ...row(12, 15, '77'),   // the collar
+  ] },
+};
 LOOKS.giant_giant = { ...LOOKS.giant, H: '8', h: '6', T: 'P', t: 'p', C: 'Y' };
 
 // -------------------------------------------------------------- creatures
@@ -273,6 +542,46 @@ const CREATURES = {
         'MMnBBnnnnnnnnn',
         '...BBNNNNNNN',
         '....nn..nn',
+      ],
+    ],
+  },
+  // Not the rat in gray. A grid of its own, half again as long.
+  giant_rat: {
+    w: 24,
+    frames: [
+      [
+        '', '',
+        '...............M..M',
+        '.........4444.M4MM4M',
+        '.......44444444444444',
+        '.....4444444444444444',
+        '....44444444444444R444',
+        '...4444444444444444444M',
+        '..43444444444444445555',
+        '..4334444444444445588',
+        '.M4333444444444555',
+        'M.433344445555555',
+        'M..3344555....44',
+        'M..44.........44',
+        '.M.4MM........4MM',
+        '..MM',
+      ],
+      [
+        '', '',
+        '...............M..M',
+        '.........4444.M4MM4M',
+        '.......44444444444444',
+        '.....4444444444444444',
+        '....44444444444444R444',
+        '...4444444444444444444M',
+        '..43444444444444445555',
+        'M.4334444444444445588',
+        'M.4333444444444555',
+        'M.433344445555555',
+        '.M.3344555...44',
+        '..M.44......44',
+        '....4MM.....4MM',
+        '',
       ],
     ],
   },
@@ -430,7 +739,6 @@ const CREATURES = {
 // Recolors of a creature: [from, to] palette keys.
 const RECOLOR = {
   wyvern: ['bat', { p: 'g', P: 'G', v: 'h', Y: 'R' }],
-  giant_rat: ['rat', { n: '4', B: '2', N: '5', 0: 'R' }],
   giant_spider: ['spider', { p: 'r', P: 'R', v: 'O', R: 'Y' }],
   alpha_scorpion: ['scorpion', { R: 'P', r: 'p', o: 'v', Y: 'e' }],
 };
@@ -1039,6 +1347,124 @@ function mirrorHalf(rows, h) {
   return grid(rows, 8, h).map((r) => r + [...r].reverse().join(''));
 }
 
+// ------------------------------------------------- the line and the light
+// Both work on a Buf of palette keys, so they need no browser and can be tested.
+
+const N4 = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+const N8 = [...N4, [1, -1], [1, 1], [-1, 1], [-1, -1]];
+
+/**
+ * Light from above. The top pixel of a mass goes a step up its ramp and the
+ * pixel on its underside a step down. A mass is three of one color in a
+ * column, so legs, tails and a staff are left as they are.
+ */
+export function lightFromAbove(b) {
+  const out = b.d.slice();
+  const open = (k) => k === '.' || k === '0';
+  for (let y = 0; y < b.h; y++) {
+    for (let x = 0; x < b.w; x++) {
+      const k = b.get(x, y);
+      if (open(k)) continue;
+      const up = b.get(x, y - 1);
+      const dn = b.get(x, y + 1);
+      if (open(up) && dn === k && b.get(x, y + 2) === k && LIGHTER[k]) out[y * b.w + x] = LIGHTER[k];
+      else if (open(dn) && up === k && b.get(x, y - 2) === k && DARKER[k]) out[y * b.w + x] = DARKER[k];
+    }
+  }
+  b.d = out;
+  return b;
+}
+
+/**
+ * The line around a sprite: one pixel, in the deep shade of what it wraps (INK).
+ * own: the grid drew its line itself, in black, as the person and the bodies
+ * do. Then only color that still touches air (a hat, a spear) is ringed.
+ * Otherwise the whole shape is ringed, and any black it had is its own (an
+ * eye, a nose) and stays black. Lines inside a shape stay black too.
+ */
+export function inkLine(b, own) {
+  const w = b.w;
+  const kept = new Set();
+  if (!own) b.d.forEach((k, i) => { if (k === '0') kept.add(i); });
+  const ring = [];
+  for (let y = 0; y < b.h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (b.get(x, y) !== '.') continue;
+      if (N4.some(([dx, dy]) => { const k = b.get(x + dx, y + dy); return k !== '.' && (!own || k !== '0'); })) ring.push(y * w + x);
+    }
+  }
+  for (const i of ring) b.d[i] = '0';
+  const out = b.d.slice();
+  for (let y = 0; y < b.h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (b.d[i] !== '0' || kept.has(i)) continue;
+      if (!N4.some(([dx, dy]) => b.get(x + dx, y + dy) === '.')) continue;   // past the edge of the grid is air
+      const votes = {};
+      N8.forEach(([dx, dy], n) => {
+        const k = b.get(x + dx, y + dy);
+        if (k !== '.' && k !== '0') votes[k] = (votes[k] || 0) + (n < 4 ? 2 : 1);
+      });
+      const best = Object.keys(votes).sort((a, c) => votes[c] - votes[a])[0];
+      if (best && INK[best]) out[i] = INK[best];
+    }
+  }
+  b.d = out;
+  return b;
+}
+
+// ------------------------------------------------- one frame, as palette keys
+
+const DIR_OF = { downA: 'down', downB: 'down', upA: 'up', upB: 'up', sideA: 'side', sideB: 'side' };
+const NO_REACH = { ox: 0, oy: 0 };
+// A robe: the gap between the legs closes.
+const ROBE = (r) => r.replace('LLOOLL', 'LLLLLL').replace('llOOll', 'llllll').replace('.OO..OO', '.OOOOOO');
+
+/**
+ * How far a look's overlays reach past the 16 by 16 person, line included:
+ * `ox` pixels on each side and `oy` above. Its sprites are baked that much
+ * bigger, and whoever draws them starts that far up and to the left.
+ */
+export function reach(look) {
+  let ox = 0;
+  let oy = 0;
+  for (const list of Object.values(look.over || {})) {
+    for (const [x, y] of list) { ox = Math.max(ox, 1 - x, x - 14); oy = Math.max(oy, 1 - y); }
+  }
+  return { ox, oy };
+}
+
+/** One frame of a person. With no `pad` it is cut to 16 by 16, which is what a person who fights is. */
+export function personBuf(look, name, pad = NO_REACH) {
+  const { ox, oy } = pad;
+  let rows = grid(HUMAN[name], 16, 16);
+  if (look.robe && name.endsWith('A')) rows = rows.map(ROBE);
+  const b = new Buf(16 + ox * 2, 16 + oy);
+  b.stamp(rows, ox, oy, look);
+  for (const [x, y, k] of (look.over && look.over[DIR_OF[name]]) || []) b.px(x + ox, y + oy, k);
+  return inkLine(lightFromAbove(b), true);
+}
+
+/** One frame of a look that has a body of its own. name: sideA or sideB. */
+export function bodyBuf(look, name) {
+  const body = BODIES[look.body];
+  const b = new Buf(body.w, body.h);
+  b.stamp(grid(body[name], body.w, body.h), 0, 0, look);
+  for (const [x, y, k] of (look.over && look.over.side) || []) b.px(x, y, k);
+  return inkLine(lightFromAbove(b), true);
+}
+
+/** Both frames of a creature, by the name an enemy gives as its `sprite`. */
+export function creatureBufs(name) {
+  const [def, swap] = RECOLOR[name] ? [CREATURES[RECOLOR[name][0]], RECOLOR[name][1]] : [CREATURES[name], null];
+  const w = def.w || 16;
+  return def.frames.map((f) => {
+    const b = new Buf(w, 16);
+    b.stamp(def.half ? mirrorHalf(f, 16) : grid(f, w, 16), 0, 0, swap);
+    return inkLine(lightFromAbove(b), false);
+  });
+}
+
 /** Can this enemy definition be drawn? */
 export function hasArt(def) {
   return !!(CREATURES[def.sprite] || RECOLOR[def.sprite] || LOOKS[def.look]);
@@ -1064,15 +1490,21 @@ export function checkArt(PAL) {
     });
   };
   const tryGrid = (name, fn) => { try { return fn(); } catch (e) { errors.push(`${name}: ${e.message}`); return null; } };
-  for (const [name, rows] of Object.entries(HUMAN)) {
-    const g = tryGrid(`human.${name}`, () => grid(rows, 16, 16));
-    if (g) for (const [who, look] of Object.entries(LOOKS)) check(`${who}.${name}`, g, look);
+  // Everything that lives is checked as it is baked: its grid, what is stamped
+  // over it, its light and its line.
+  for (const [who, look] of Object.entries(LOOKS)) {
+    if (look.body && !BODIES[look.body]) { errors.push(`${who}: no body '${look.body}'`); continue; }
+    const frames = look.body
+      ? ['sideA', 'sideB'].map((name) => [name, () => bodyBuf(look, name)])
+      : Object.keys(HUMAN).map((name) => [name, () => personBuf(look, name, reach(look))]);
+    for (const [name, make] of frames) {
+      const b = tryGrid(`${who}.${name}`, make);
+      if (b) check(`${who}.${name}`, b.rows());
+    }
   }
-  for (const [name, c] of Object.entries(CREATURES)) {
-    c.frames.forEach((f, i) => {
-      const g = tryGrid(`${name}[${i}]`, () => (c.half ? mirrorHalf(f, 16) : grid(f, c.w || 16, 16)));
-      if (g) check(`${name}[${i}]`, g);
-    });
+  for (const name of [...Object.keys(CREATURES), ...Object.keys(RECOLOR)]) {
+    const bufs = tryGrid(name, () => creatureBufs(name));
+    if (bufs) bufs.forEach((b, i) => check(`${name}[${i}]`, b.rows()));
   }
   for (const [name, rows] of Object.entries(THINGS)) { const g = tryGrid(name, () => grid(rows, 16, 16)); if (g) check(name, g); }
   for (const [name, rows] of Object.entries(ICONS)) { const g = tryGrid(`icon.${name}`, () => grid(rows, 10, 10)); if (g) check(`icon.${name}`, g); }
@@ -1088,37 +1520,28 @@ export function checkArt(PAL) {
 }
 
 function bakePerson(look) {
-  const make = (name, dir) => {
-    const b = new Buf(16, 16);
-    b.stamp(grid(HUMAN[name], 16, 16), 0, 0, look);
-    const over = look.over && look.over[dir];
-    if (over) for (const [x, y, k] of over) b.px(x, y, k);
-    b.outline(look.O || '0');
-    return b.toCanvas(name);
-  };
-  const downA = make('downA', 'down');
-  const downB = make('downB', 'down');
-  const upA = make('upA', 'up');
-  const upB = make('upB', 'up');
-  const rightA = make('sideA', 'side');
-  const rightB = make('sideB', 'side');
+  const pad = reach(look);
+  const make = (name) => personBuf(look, name, pad).toCanvas(name);
+  const downA = make('downA');
+  const downB = make('downB');
+  const upA = make('upA');
+  const upB = make('upB');
+  const rightA = make('sideA');
+  const rightB = make('sideB');
   return {
     down: [downA, downB, downA, flipH(downB)],
     up: [upA, upB, upA, flipH(upB)],
     right: [rightA, rightB, rightA, rightB],
     left: [flipH(rightA), flipH(rightB), flipH(rightA), flipH(rightB)],
+    // Where the 16 by 16 person starts inside each frame. Zero unless something reaches past it.
+    ox: pad.ox,
+    oy: pad.oy,
   };
 }
 
-function bakeCreature(def, swap = null, big = false) {
-  const frames = def.frames.map((f, i) => {
-    const rows = def.half ? mirrorHalf(f, 16) : grid(f, def.w || 16, 16);
-    const b = new Buf(def.w || 16, 16);
-    b.stamp(rows, 0, 0, swap);
-    b.outline('0');
-    const c = b.toCanvas(`creature ${i}`);
-    return big ? scale2(c) : c;
-  });
+/** Something that only ever faces left or right, from its frames facing right. */
+function bakeSided(bufs) {
+  const frames = bufs.map((b, i) => b.toCanvas(`creature ${i}`));
   return {
     right: frames,
     left: frames.map(flipH),
@@ -1133,19 +1556,14 @@ function bakeCreature(def, swap = null, big = false) {
 export function buildSprites() {
   const S = { people: {}, creatures: {}, things: {}, fx: {}, icons: {} };
 
-  for (const [who, look] of Object.entries(LOOKS)) S.people[who] = bakePerson(look);
+  // A look with a body of its own only fights. It has no way to stand and talk.
+  for (const [who, look] of Object.entries(LOOKS)) if (!look.body) S.people[who] = bakePerson(look);
 
-  for (const [name, def] of Object.entries(CREATURES)) S.creatures[name] = bakeCreature(def);
-  for (const [name, [from, swap]] of Object.entries(RECOLOR)) S.creatures[name] = bakeCreature(CREATURES[from], swap);
-  // Anything drawn on the person template can also fight like a creature.
-  for (const [who, set] of Object.entries(S.people)) {
+  for (const name of [...Object.keys(CREATURES), ...Object.keys(RECOLOR)]) S.creatures[name] = bakeSided(creatureBufs(name));
+  // Any look can fight like a creature: on its own body, or as the person cut to 16 by 16.
+  for (const [who, look] of Object.entries(LOOKS)) {
     if (S.creatures[who]) continue;
-    S.creatures[who] = {
-      right: [set.right[0], set.right[1]], left: [set.left[0], set.left[1]],
-      white: [tint(set.right[0], '8'), tint(set.right[1], '8')],
-      whiteLeft: [tint(set.left[0], '8'), tint(set.left[1], '8')],
-      w: 16, h: 16,
-    };
+    S.creatures[who] = bakeSided(['sideA', 'sideB'].map((name) => (look.body ? bodyBuf(look, name) : personBuf(look, name))));
   }
   /** The sprite set for an enemy definition; big ones are doubled once and kept. */
   S.creatureFor = (def) => {

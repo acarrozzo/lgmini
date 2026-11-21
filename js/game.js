@@ -1459,36 +1459,51 @@ export class Game {
       const x = ox + th.cx * TILE + Math.round((th.w * TILE - spr.width) / 2);
       const y = oy + (th.cy + th.h) * TILE - spr.height;
       // People stand on a shadow, breathe and blink. Everything else is a picture.
+      // A person's sprite may be bigger than the person (a hat, a spear), so
+      // the shadow and the eyes go by where the 16 by 16 of them starts.
       const paint = th.t !== 'npc' ? () => g.drawImage(spr, x, y) : () => {
-        this.shadow(g, x, y);
         const look = th.def.look || PEOPLE[th.def.who].look;
-        this.drawPerson(g, spr, x, y, th.face || 'down', LOOKS[look].F, this.vt + th.cx * 31 + th.cy * 17);
+        const set = this.S.people[look];
+        this.shadow(g, x + set.ox, y + set.oy);
+        this.drawPerson(g, spr, x + set.ox, y + set.oy, th.face || 'down', LOOKS[look].F, this.vt + th.cx * 31 + th.cy * 17, set.ox, set.oy);
       };
       if (list) list.push({ z: (th.cy + th.h) * TILE - (th.solid ? 0 : 14), draw: paint });
       else paint();
     }
   }
 
-  /** The small dark oval under anything that stands on the ground. size 2 is for the doubled sprites. */
+  /**
+   * The small dark oval under anything that stands on the ground. x and y are
+   * the top left of a square 16 * size on a side that ends at its feet. size 2
+   * is for the doubled sprites and 1.5 for the 24 pixel ones. Three bands that
+   * meet and never overlap, at any size.
+   */
   shadow(g, x, y, size = 1) {
     const was = g.globalAlpha;
     g.globalAlpha = was * 0.3;
-    fillRect(g, x + 4 * size, y + 14 * size - 1, 8 * size, size, '0');
-    fillRect(g, x + 3 * size, y + 15 * size - 1, 10 * size, size, '0');
-    fillRect(g, x + 4 * size, y + 16 * size - 1, 8 * size, size, '0');
+    const top = Math.round(y + 14 * size) - 1;
+    const mid = Math.round(y + 15 * size) - 1;
+    const low = Math.round(y + 16 * size) - 1;
+    fillRect(g, Math.round(x + 4 * size), top, Math.round(8 * size), mid - top, '0');
+    fillRect(g, Math.round(x + 3 * size), mid, Math.round(10 * size), low - mid, '0');
+    fillRect(g, Math.round(x + 4 * size), low, Math.round(8 * size), Math.max(1, Math.round(size)), '0');
     g.globalAlpha = was;
   }
 
   /**
    * A person standing still. Every so often they breathe out, which sinks them
    * a pixel onto their legs, and they blink. clock: frames, from anywhere.
+   * x and y are where the 16 by 16 person is. ox and oy are how far the sprite
+   * reaches past that, to the left and above (see reach in art-sprites.js).
    */
-  drawPerson(g, spr, x, y, dir, skin, clock) {
+  drawPerson(g, spr, x, y, dir, skin, clock, ox = 0, oy = 0) {
     const out = clock % 100 >= 58;
+    const w = spr.width;
+    const legs = spr.height - 3;      // the feet stay put; everything over them sinks
     if (out) {
-      g.drawImage(spr, 0, 13, 16, 3, x, y + 13, 16, 3);
-      g.drawImage(spr, 0, 0, 16, 13, x, y + 1, 16, 13);
-    } else g.drawImage(spr, x, y);
+      g.drawImage(spr, 0, legs, w, 3, x - ox, y - oy + legs, w, 3);
+      g.drawImage(spr, 0, 0, w, legs, x - ox, y - oy + 1, w, legs);
+    } else g.drawImage(spr, x - ox, y - oy);
     if ((clock + 120) % 200 >= 7 || dir === 'up') return;
     const ey = y + 6 + (out ? 1 : 0);
     if (dir === 'down') { fillRect(g, x + 6, ey, 1, 1, skin); fillRect(g, x + 9, ey, 1, 1, skin); }
@@ -1553,8 +1568,9 @@ export class Game {
       fillRect(g, x + m.spr.w / 2 - 5, y + m.spr.h - 2, 10, 3, '0');
       g.globalAlpha = 1;
     } else if (m.mode === 'walk') {
-      const size = m.spr.h / 16;
-      this.shadow(g, Math.round(m.x + (m.spr.w - 16 * size) / 2), y, size);
+      // As wide as the lesser of its two sides, and under its feet whatever its shape.
+      const size = Math.min(m.spr.w, m.spr.h) / 16;
+      this.shadow(g, m.x + (m.spr.w - 16 * size) / 2, y + m.spr.h - 16 * size, size);
     }
     g.drawImage(set[i], x, y + lift);
     if (m.hp < m.def.hp && !m.def.boss) {

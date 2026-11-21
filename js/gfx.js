@@ -43,6 +43,33 @@ export const PAL = {
   $: '#ffff00', '%': '#6d7b90', '@': '#ea4659',                            // crit, miss, error
 };
 
+// The ramps, each dark to light. A step up a ramp is a highlight and a step
+// down is a shade. A color takes the first ramp it is on. The UI colors are on none.
+export const RAMPS = ['012345678', 'xfgGhH', 'bBnNdtT', 'uUwWi', 'zrRoO', 'yYl', 'zpPvV', 'nSsk', 'rmM', 'xcCe'];
+export const LIGHTER = {};
+export const DARKER = {};
+for (const ramp of RAMPS) {
+  for (let i = 0; i < ramp.length; i++) {
+    if (i + 1 < ramp.length && !LIGHTER[ramp[i]]) LIGHTER[ramp[i]] = ramp[i + 1];
+    if (i > 0 && !DARKER[ramp[i]]) DARKER[ramp[i]] = ramp[i - 1];
+  }
+}
+LIGHTER.D = 'd'; DARKER.D = 'n';   // the mid tan sits between two browns
+
+// The line around a sprite is not black. It is the deep shade of the color it
+// wraps: a rat has a brown edge and the hero a gray one. This says which.
+export const INK = {
+  8: '3', 7: '3', 6: '2', 5: '2', 4: '1', 3: '1', 2: '0', 1: '0',
+  H: 'g', h: 'f', G: 'f', g: 'x', f: '0',
+  T: 'n', t: 'n', d: 'B', D: 'B', N: 'B', n: 'b', B: 'b', b: '0',
+  i: 'U', W: 'U', w: 'u', U: 'u', u: '0',
+  O: 'r', o: 'r', R: 'r', r: 'z',
+  l: 'y', Y: 'B', y: 'b', J: 'B', K: 'b',
+  V: 'P', v: 'p', P: 'p', p: '0',
+  k: 'n', s: 'B', S: 'b', M: 'r', m: 'r',
+  e: 'c', C: 'c', c: 'x', x: '0', X: 'x', z: '0', Z: 'z',
+};
+
 export function makeCanvas(w, h) {
   const c = document.createElement('canvas');
   c.width = w;

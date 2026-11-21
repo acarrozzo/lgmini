@@ -11,8 +11,13 @@
 //   swim: lives in water and stays there
 //   shoot: { kind, every, n, spread, speed } fires at you; the shot is blocked
 //          by DEX if it is ranged, MAG if it is magic
-//   look: drawn from the person template instead of a creature grid
-//   big: drawn double size
+//   look: drawn from a look (art-sprites.js) instead of a creature grid. A look
+//         is the person in other colors, or has a body of its own: goblins and
+//         kobolds small, trolls lanky, ogres a brute, and the two who lead
+//         those (the Ogre Lieutenant, the Troll King) a hulk.
+//   big: drawn double size. It is how a boss is its kind, bigger: the Goblin
+//        Chief is a goblin doubled. A brute, a lanky body or a hulk is never
+//        doubled.
 //   drops: [slug, chance] pairs, each rolled on its own
 //   first: gear handed over on the first kill, as in the main game
 
@@ -84,11 +89,11 @@ export const ENEMIES = {
     ai: 'lunge', speed: 0.45, gold: [8, 16], drops: [['raw-meat', 1]],
   },
   ogre: {
-    name: 'Ogre', look: 'ogre', big: true, level: 8, hp: 40, att: 18, def: 5, type: 'melee',
+    name: 'Ogre', look: 'ogre', level: 8, hp: 40, att: 18, def: 5, type: 'melee',
     ai: 'lunge', speed: 0.4, gold: [10, 20], drops: [],
   },
   'ogre-lieutenant': {
-    name: 'Ogre Lieutenant', look: 'ogre_lieutenant', big: true, level: 13, hp: 240, att: 30, def: 8, type: 'melee',
+    name: 'Ogre Lieutenant', look: 'ogre_lieutenant', level: 13, hp: 240, att: 30, def: 8, type: 'melee',
     boss: true, special: 'power', ai: 'lunge', speed: 0.5, gold: [150, 250],
     drops: [['red-potion', 1], ['red-potion', 1]], restMinutes: 10,
   },
@@ -148,11 +153,11 @@ export const ENEMIES = {
     ai: 'shooter', speed: 0.4, shoot: { kind: 'orb', every: 100, speed: 1.8 }, gold: [18, 36], drops: [['blue-potion', 0.25]],
   },
   'troll-elder': {
-    name: 'Troll Elder', look: 'troll', big: true, level: 18, hp: 110, att: 50, def: 12, type: 'melee',
+    name: 'Troll Elder', look: 'troll', level: 18, hp: 110, att: 50, def: 12, type: 'melee',
     special: 'power', ai: 'lunge', speed: 0.45, gold: [25, 50], drops: [],
   },
   'troll-king': {
-    name: 'Troll King', look: 'troll_king', big: true, level: 20, hp: 520, att: 60, def: 12, type: 'melee',
+    name: 'Troll King', look: 'troll_king', level: 20, hp: 520, att: 60, def: 12, type: 'melee',
     boss: true, special: 'bite', ai: 'lunge', speed: 0.8, gold: [400, 600],
     drops: [['purple-potion', 1]], first: 'steel-sword', restMinutes: 15,
   },
