@@ -7,7 +7,7 @@
 // Nothing that lives is outlined in black. Its line is the deep shade of the
 // color it wraps, and it is lit from above (see the line and the light).
 
-import { Buf, bake, flipH, rotate, scale2, tint, LIGHTER, DARKER, INK } from './gfx.js';
+import { Buf, bake, flipH, rotate, scale2, tint, rng, LIGHTER, DARKER, INK } from './gfx.js';
 
 // ------------------------------------------------------------ the person
 // Roles: O outline, H hair/hood, h its shade, F face, f face shade, E eyes,
@@ -925,6 +925,33 @@ const THINGS = {
   ],
 };
 
+// What hangs over the thing the hero faces, in place of a key's name: a speech
+// bubble over someone to talk to, a gold arrow over anything else. There are
+// several keys on the button, so it names none of them.
+export const MARKS = {
+  talk: [
+    '.qqqqqqqqq.',
+    'q888888888q',
+    'q883838388q',
+    'q888888888q',
+    '.qq8qqqqqq.',
+    '..q8q......',
+    '..qq.......',
+  ],
+  use: [
+    'qqqqqqq',
+    'qJJJJJq',
+    '.qJJJq.',
+    '..qJq..',
+    '...q...',
+  ],
+};
+const TALK_TO = new Set(['npc', 'shop']);
+/** Which mark a kind of thing gets: 'talk' or 'use'. */
+export function markFor(kind) {
+  return TALK_TO.has(kind) ? 'talk' : 'use';
+}
+
 const FX = {
   arrow: ['.....8', 'NNNNN88', '.....8'],
   rock: ['.5555', '566665', '566655', '565555', '.5555'],
@@ -1265,15 +1292,65 @@ function paintGate() {
   return b;
 }
 
-function paintBerryBush(berry) {
-  const b = new Buf(16, 16);
-  b.ellipse(7.5, 9, 6.5, 5.5, (x, y, dx, dy) => (dx * 0.6 + dy * 0.8 < -0.35 ? 'h' : dx * 0.6 + dy * 0.8 > 0.4 ? 'f' : 'g'));
-  for (const [x, y] of [[5, 7], [9, 6], [7, 10], [11, 9], [4, 10], [8, 8]]) {
-    b.px(x, y, berry);
-    b.px(x + 1, y, berry);
-    b.px(x, y + 1, berry);
+// A berry bush, 24 by 22: wider than its tile and taller than the hero. It
+// hangs 4 pixels past the tile on each side, but you bump into the tile only.
+// Its leaves are the trees' way: a dark mass, lit clumps on top, one dark rim.
+// Each berry is a 3 by 3 with a shine and a shaded underside. The blue is a
+// true blue with a white shine, so it stands off the leaves; the old one was
+// as bright as they are and went missing.
+export const BERRY_BUSH = { w: 24, h: 22 };
+export const BERRIES = {
+  red: { h: 'M', m: 'R', l: 'r' },
+  blue: { h: 'i', m: 'w', l: 'U' },
+};
+const BERRY_SHAPE = ['mm.', 'hml', 'mll'];
+const BERRY_AT = [[5, 6], [12, 3], [17, 7], [9, 10], [15, 12], [4, 13], [10, 16], [18, 15]];
+const BUSH_LEAF = { edge: 'f', light: 'h', mid: 'G', dark: 'g', hi: 'H' };
+const BUSH_LEAF_LOW = { ...BUSH_LEAF, light: 'G', mid: 'g' };
+const BUSH_MASS = { edge: 'x', light: 'f', mid: 'f', dark: 'f', hi: 'f' };
+
+function leafBlob(b, r, cx, cy, rx, ry, cols, wobble, specks) {
+  const phase = r() * 6.28;
+  for (let y = Math.floor(cy - ry) - 1; y <= Math.ceil(cy + ry) + 1; y++) {
+    for (let x = Math.floor(cx - rx) - 1; x <= Math.ceil(cx + rx) + 1; x++) {
+      const dx = (x - cx) / rx;
+      const dy = (y - cy) / ry;
+      const lim = 1 + wobble * Math.sin(Math.atan2(dy, dx) * 7 + phase);
+      const d2 = dx * dx + dy * dy;
+      if (d2 > lim * lim) continue;
+      const s = dx * 0.6 + dy * 0.8;
+      b.px(x, y, d2 > lim * lim * 0.72 ? cols.edge : s < -0.4 ? cols.light : s > 0.36 ? cols.dark : cols.mid);
+    }
   }
-  b.outline('x');
+  for (let i = 0; i < specks; i++) {
+    const a = r() * 6.28;
+    const m = r() * 0.6;
+    b.px(Math.round(cx + Math.cos(a) * rx * m), Math.round(cy + Math.sin(a) * ry * m), cols.hi);
+  }
+}
+
+/** berry: 'red', 'blue', or null for a bush that has been picked. */
+export function paintBerryBush(berry) {
+  const { w, h } = BERRY_BUSH;
+  const b = new Buf(w, h);
+  const r = rng(7);   // one seed for all three, so picking takes the berries and leaves the leaves
+  leafBlob(b, r, 12, 11, 11, 9, BUSH_MASS, 0.08, 0);
+  [[15.5, 7.5, 6, 5], [7.5, 13, 6.2, 5], [7.5, 6.5, 5.6, 4.6], [16.5, 14.5, 5.6, 4.4]]
+    .forEach(([cx, cy, rx, ry], i) => leafBlob(b, r, cx, cy, rx, ry, i % 2 ? BUSH_LEAF_LOW : BUSH_LEAF, 0.1, 2));
+  const rim = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (b.get(x, y) === '.') continue;
+      if (b.get(x - 1, y) === '.' || b.get(x + 1, y) === '.' || b.get(x, y - 1) === '.' || b.get(x, y + 1) === '.') rim.push([x, y]);
+    }
+  }
+  for (const [x, y] of rim) b.px(x, y, 'x');
+  const c = BERRIES[berry];
+  if (c) for (const [bx, by] of BERRY_AT) BERRY_SHAPE.forEach((row, j) => [...row].forEach((k, i) => { if (k !== '.') b.px(bx + i, by + j, c[k]); }));
+  // Its shadow, on the ground under it.
+  const foot = new Buf(w, h);
+  foot.ellipse(12, h - 2, 11 * 0.85, 1.6, 'g');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (b.get(x, y) === '.' && foot.get(x, y) !== '.') b.px(x, y, 'g');
   return b;
 }
 
@@ -1473,7 +1550,7 @@ export function hasArt(def) {
 /** Every object sprite a room may name. */
 export const THING_SPRITES = new Set([
   ...Object.keys(THINGS), 'goldChest', 'goldChestOpen', 'fire2', 'pillar', 'grandPillar', 'hubPillar',
-  'redberryBush', 'blueberryBush', 'tent', 'cabin', 'fountain', 'gate', 'boat', 'whirl',
+  'redberryBush', 'blueberryBush', 'pickedBush', 'tent', 'cabin', 'fountain', 'gate', 'boat', 'whirl',
   'pine', 'pineStump', 'block', 'blockHatchet',
   'houseWood', 'houseRed', 'houseBlue', 'houseShop', 'housePub',
 ]);
@@ -1509,6 +1586,7 @@ export function checkArt(PAL) {
   for (const [name, rows] of Object.entries(THINGS)) { const g = tryGrid(name, () => grid(rows, 16, 16)); if (g) check(name, g); }
   for (const [name, rows] of Object.entries(ICONS)) { const g = tryGrid(`icon.${name}`, () => grid(rows, 10, 10)); if (g) check(`icon.${name}`, g); }
   for (const [name, rows] of Object.entries(FX)) check(`fx.${name}`, rows);
+  for (const [name, rows] of Object.entries(MARKS)) check(`mark.${name}`, rows);
   for (const name of Object.keys(BLADES)) {
     for (let turn = 0; turn < TURN; turn++) {
       const b = tryGrid(`blade.${name}`, () => paintBlade(name, turn));
@@ -1586,8 +1664,9 @@ export function buildSprites() {
   S.things.fire2 = flipH(S.things.fire);
   S.things.pillar = paintPillar(true).toCanvas('pillar');
   S.things.grandPillar = paintPillar(false).toCanvas('grandPillar');
-  S.things.redberryBush = paintBerryBush('R').toCanvas('redberryBush');
-  S.things.blueberryBush = paintBerryBush('w').toCanvas('blueberryBush');
+  S.things.redberryBush = paintBerryBush('red').toCanvas('redberryBush');
+  S.things.blueberryBush = paintBerryBush('blue').toCanvas('blueberryBush');
+  S.things.pickedBush = paintBerryBush(null).toCanvas('pickedBush');
   S.things.tent = paintTent().toCanvas('tent');
   S.things.cabin = paintCabin().toCanvas('cabin');
   S.things.hubPillar = paintPillar('gold').toCanvas('hubPillar');
@@ -1621,6 +1700,7 @@ export function buildSprites() {
   const boom = bake(FX.boomerang.map((r) => r.padEnd(8, '.')), null, 'boomerang');
   S.fx.boomerang = [boom, rotate(boom, 1), rotate(boom, 2), rotate(boom, 3)];
   S.fx.coin = bake(FX.coin.map((r) => r.padEnd(8, '.')), null, 'coin');
+  S.fx.mark = Object.fromEntries(Object.entries(MARKS).map(([name, rows]) => [name, bake(rows, null, `mark.${name}`)]));
   S.fx.orb = bake(FX.orb.map((r) => r.padEnd(6, '.')), null, 'orb');
   S.fx.spike = bake(FX.spike.map((r) => r.padEnd(5, '.')), null, 'spike');
   S.fx.rock = bake(FX.rock.map((r) => r.padEnd(6, '.')), null, 'rock');

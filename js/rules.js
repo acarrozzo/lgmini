@@ -297,6 +297,17 @@ export function chopYield(player, def) {
   return Math.max(0, Math.min(def.gives || 1, cap - have));
 }
 
+/**
+ * What a berry bush gives you: what it has left this visit (`gives` when you
+ * walk in), until the bag is full. It fills again each time you come back.
+ */
+export function pickYield(player, def, left = def.gives) {
+  const item = ITEMS[def.item];
+  if (!item) return 0;
+  const have = player.bag[def.item] || 0;
+  return Math.max(0, Math.min(left ?? 0, (item.cap ?? 99) - have));
+}
+
 export function hasItem(player, slug, n = 1) {
   return (player.bag[slug] || 0) >= n;
 }

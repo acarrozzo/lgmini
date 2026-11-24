@@ -4,13 +4,13 @@
 
 import { W, TILE, COLS, ROWS, HUD_H, H, PAL, makeCanvas, drawText, drawTextOutlined, textWidth, fillRect } from './gfx.js';
 import { bakeRoom, TILES } from './art-tiles.js';
-import { bladeLength, LOOKS } from './art-sprites.js';
+import { bladeLength, LOOKS, markFor } from './art-sprites.js';
 import { ROOMS } from './data/rooms.js';
 import { ENEMIES } from './data/enemies.js';
 import { ITEMS, statLine, countName } from './data/items.js';
 import { QUESTS, PEOPLE, questBeat, questProgress } from './data/quests.js';
 import * as R from './rules.js';
-import { neighbor, check, edgeGate, EDGES } from './world.js';
+import { neighbor, check, edgeGate, EDGES, plain } from './world.js';
 import { pressed, held, axis, clearInput, label, rumble } from './input.js';
 import { sfx, playSong } from './audio.js';
 import { saveGame, settings } from './state.js';
@@ -1173,6 +1173,7 @@ export class Game {
       }));
       return;
     }
+    if (th.t === 'take' && d.gives) { this.pick(th); return; }
     if (th.t === 'take') {
       if (d.once && p.flags[d.once]) { sfx.deny(); ui.say('', d.full || 'DRAFT|You already took one.'); return; }
       const have = p.bag[d.item] || 0;
@@ -1217,6 +1218,29 @@ export class Game {
     }
     this.float(x + 2, y - 10, `+${got}`, 'J');
     this.ui.setFeed([['You chop down some wood.', '9'], [`${ITEMS[d.item].name} ${p.bag[d.item]}/${Math.min(d.upTo, ITEMS[d.item].cap)}`, 'J']]);
+    this.noteProgress(null, [d.item]);
+    saveGame(p);
+  }
+
+  /**
+   * A berry bush. It has `gives` berries each visit and is full again once you
+   * walk off the screen and back, so a player can stock up as far as the bag
+   * allows. Picked in the feed, like a tree, so going back for more does not
+   * open a box each time. A bare bush has nothing more to say.
+   */
+  pick(th) {
+    const p = this.p;
+    const d = th.def;
+    const left = th.left ?? d.gives;
+    const got = R.pickYield(p, d, left);
+    if (!got) { sfx.deny(); this.ui.say('', d.full || 'DRAFT|You have enough.'); return; }
+    R.addItem(p, d.item, got);
+    th.left = left - got;
+    if (th.left <= 0) th.cut = true;
+    sfx.item();
+    const item = ITEMS[d.item];
+    this.float(th.cx * TILE + 2, th.cy * TILE - 10, `+${got}`, 'J');
+    this.ui.setFeed([[plain(d.text), '9'], [`${item.plural || item.name} ${p.bag[d.item]}/${item.cap ?? 99}`, 'J']]);
     this.noteProgress(null, [d.item]);
     saveGame(p);
   }
@@ -1446,6 +1470,7 @@ export class Game {
       return this.S.people[look][dir][0];
     }
     if (th.t === 'chop') return th.cut ? T.pineStump : T.pine;
+    if (d.pickedSprite && th.cut) return T[d.pickedSprite];
     if (d.heldSprite && R.hasItem(this.p, d.item)) return T[d.heldSprite];
     if (th.t === 'cook' || d.sprite === 'fire') return (this.vt >> 3) % 2 ? T.fire : T.fire2;
     const spr = T[d.sprite] || T.sign;
@@ -1796,12 +1821,14 @@ export class Game {
         drawTextOutlined(g, f.text, Math.round(f.x), Math.round(f.y) - hop, f.color, '0');
       }
 
-      // What A would do right now.
+      // That A would do something here: a bubble over someone to talk to, an
+      // arrow over anything else. It bobs a pixel. It names no key.
       if (this.mode === 'play' && !this.ui.busy && this.hero.swing <= 0) {
         const th = this.facingThing();
-        if (th && (this.t >> 4) % 2 === 0) {
-          const name = label('a');
-          drawTextOutlined(g, name, th.cx * TILE + th.w * 8 - Math.round(textWidth(name) / 2), (th.cy + th.h) * TILE - this.thingSprite(th).height - 9, 'J', 'q');
+        if (th) {
+          const mark = this.S.fx.mark[markFor(th.t)];
+          const top = (th.cy + th.h) * TILE - this.thingSprite(th).height;
+          g.drawImage(mark, th.cx * TILE + th.w * 8 - Math.round(mark.width / 2), top - 1 - mark.height - ((this.t >> 4) % 2));
         }
       }
 

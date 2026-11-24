@@ -137,7 +137,7 @@ export const ROOMS = {
       'TTTTTTT::TTTTTTT',
     ],
     things: [
-      { t: 'take', x: 11, y: 3, sprite: 'redberryBush', item: 'redberry', upTo: 5, text: 'DRAFT|You pick redberries.', full: 'DRAFT|You have enough redberries.' },
+      { t: 'take', x: 11, y: 3, sprite: 'redberryBush', pickedSprite: 'pickedBush', item: 'redberry', gives: 5, text: 'DRAFT|You pick redberries.', full: 'DRAFT|You have enough redberries.' },
     ],
     spawns: [['rat', 1]],
     gates: [
@@ -229,7 +229,7 @@ export const ROOMS = {
       '.......::.......',
     ],
     things: [
-      { t: 'take', x: 12, y: 4, sprite: 'blueberryBush', item: 'blueberry', upTo: 5, text: 'DRAFT|You pick blueberries.', full: 'DRAFT|You have enough blueberries.' },
+      { t: 'take', x: 12, y: 4, sprite: 'blueberryBush', pickedSprite: 'pickedBush', item: 'blueberry', gives: 5, text: 'DRAFT|You pick blueberries.', full: 'DRAFT|You have enough blueberries.' },
     ],
   },
 

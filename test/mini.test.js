@@ -332,6 +332,7 @@ test('mini: everything the data names can be drawn', async () => {
     for (const t of room.things || []) {
       if (t.sprite) assert.ok(THING_SPRITES.has(t.sprite), `room ${id}: unknown sprite ${t.sprite}`);
       if (t.heldSprite) assert.ok(THING_SPRITES.has(t.heldSprite), `room ${id}: unknown sprite ${t.heldSprite}`);
+      if (t.pickedSprite) assert.ok(THING_SPRITES.has(t.pickedSprite), `room ${id}: unknown sprite ${t.pickedSprite}`);
       if (t.look) assert.ok(LOOKS[t.look], `room ${id}: unknown look ${t.look}`);
       // A look with a body of its own has side views only. It can fight, not stand and talk.
       if (t.look) assert.ok(!LOOKS[t.look].body, `room ${id}: ${t.look} has no way to stand and talk`);
@@ -446,8 +447,8 @@ test('mini: finding every room is every room but the Plane of Rebirth', async ()
 test('mini: a button is called what it is on the thing you are holding', async () => {
   const I = await load('input.js');
   I.setDevice('keys');
-  assert.deepEqual(['a', 'b', 'y', 'x', 'start', 'map', 'back'].map(I.label), ['Z', 'X', 'C', 'V', 'Enter', 'Tab', 'Esc']);
-  assert.equal(I.withKeys('{a} swings. {b} throws. {start} is your bag.'), 'Z swings. X throws. Enter is your bag.');
+  assert.deepEqual(['a', 'b', 'y', 'x', 'start', 'map', 'back'].map(I.label), ['Space', 'X', 'C', 'V', 'Enter', 'Tab', 'Esc']);
+  assert.equal(I.withKeys('{a} swings. {b} throws. {start} is your bag.'), 'Space swings. X throws. Enter is your bag.');
   I.setDevice('touch');
   assert.deepEqual(['a', 'b', 'y', 'x', 'start', 'map', 'back'].map(I.label), ['A', 'B', 'Y', 'X', 'START', 'MAP', 'B']);
   assert.equal(I.withKeys('{move} {x} eats.'), 'The pad moves you. X eats.');
@@ -496,6 +497,58 @@ test('mini: a tree gives two wood until the place or the bag says stop', async (
   p.bag.wood = 20;
   assert.equal(R.chopYield(p, { item: 'wood', gives: 2, upTo: 99 }), 0, 'the bag holds twenty whatever the place says');
   assert.equal(R.chopYield(p, { item: 'nothing', gives: 2, upTo: 9 }), 0);
+});
+
+test('mini: what you face gets a mark, a bubble for people and an arrow for things, never a key', async () => {
+  const { MARKS, markFor } = await load('art-sprites.js');
+  const { ROOMS } = await load('data/rooms.js');
+  assert.equal(markFor('npc'), 'talk');
+  assert.equal(markFor('shop'), 'talk', 'a shop is the shopkeeper');
+  for (const kind of ['chest', 'sign', 'read', 'take', 'rest', 'hub', 'chop', 'door', 'cook', 'toll', 'craft', 'decor']) assert.equal(markFor(kind), 'use', kind);
+  for (const room of Object.values(ROOMS)) for (const t of room.things || []) assert.ok(MARKS[markFor(t.t)], `${t.t} has a mark`);
+  for (const [name, rows] of Object.entries(MARKS)) {
+    assert.ok(rows.every((r) => r.length === rows[0].length), `${name}: rows are one width`);
+    assert.ok(rows[0].length <= 16 && rows.length <= 8, `${name}: small enough to sit over a tile`);
+  }
+});
+
+test('mini: a berry bush is bigger than its tile, and picking it takes the berries and leaves the leaves', async () => {
+  const { paintBerryBush, BERRY_BUSH, BERRIES } = await load('art-sprites.js');
+  const bare = paintBerryBush(null);
+  assert.deepEqual([bare.w, bare.h], [BERRY_BUSH.w, BERRY_BUSH.h]);
+  assert.ok(bare.w > 16 && bare.h > 16, 'wider and taller than a tile');
+  const berryKeys = new Set(Object.values(BERRIES).flatMap((c) => Object.values(c)));
+  assert.ok(!bare.d.some((k) => berryKeys.has(k)), 'a picked bush has no berries');
+  for (const [kind, c] of Object.entries(BERRIES)) {
+    const b = paintBerryBush(kind);
+    let berries = 0;
+    b.d.forEach((k, i) => {
+      if (k === bare.d[i]) return;
+      assert.ok(Object.values(c).includes(k), `${kind}: only berries differ from the bare bush`);
+      assert.notEqual(bare.d[i], '.', `${kind}: a berry hangs off the leaves at ${i % b.w},${Math.floor(i / b.w)}`);
+      if (k === c.h) berries += 1;
+    });
+    assert.equal(berries, 8, `${kind}: eight berries, each with its shine`);
+  }
+});
+
+test('mini: a berry bush gives five a visit, and they stack until the bag is full', async () => {
+  const R = await load('rules.js');
+  const { ROOMS } = await load('data/rooms.js');
+  const p = R.newPlayer();
+  const bushes = Object.values(ROOMS).flatMap((r) => r.things || []).filter((t) => t.t === 'take' && t.gives);
+  assert.deepEqual(bushes.map((t) => [t.item, t.gives]).sort(), [['blueberry', 5], ['redberry', 5]]);
+  const red = bushes.find((t) => t.item === 'redberry');
+  assert.equal(R.pickYield(p, red), 5, 'a full bush');
+  assert.equal(R.pickYield(p, red, 0), 0, 'picked clean until you walk off the screen');
+  p.bag.redberry = 10;
+  assert.equal(R.pickYield(p, red), 5, 'a second visit gives five more, not up to five');
+  p.bag.redberry = 18;
+  assert.equal(R.pickYield(p, red), 2, 'the bag holds twenty');
+  assert.equal(R.pickYield(p, red, 1), 1);
+  p.bag.redberry = 20;
+  assert.equal(R.pickYield(p, red), 0);
+  assert.equal(R.pickYield(p, { item: 'nothing', gives: 5 }), 0);
 });
 
 test("mini: the hatchet is at Jack's cabin, and the pines add up to a boat", async () => {
@@ -712,7 +765,9 @@ test('mini: a key can be added to a button, moved, and taken off, but never the 
   I.resetKeys();
   I.setDevice('keys');
   assert.equal(I.customKeys(), null, 'untouched keys are not worth saving');
-  assert.deepEqual(I.keysFor('a'), ['KeyZ', 'KeyJ', 'Space']);
+  assert.deepEqual(I.keysFor('a'), ['Space', 'KeyZ', 'KeyJ']);
+  assert.equal(I.label('a'), 'Space', 'Space swings and talks unless the player says otherwise');
+  assert.equal(I.tag('a'), 'Z', 'a HUD corner names the short key');
 
   // E does what V does.
   assert.deepEqual(I.bindKey('x', 'KeyE'), { ok: true, from: null });
@@ -755,12 +810,12 @@ test('mini: a broken set of saved keys cannot lock you out', async () => {
   assert.deepEqual([twice.a, twice.b], [['KeyZ'], ['KeyX', 'KeyK']]);
   // A button with nothing, a key the browser keeps, and Esc left off.
   const holes = I.normalizeKeys({ ...def, a: [], map: ['F5'], start: ['Enter'] });
-  assert.deepEqual(holes.a, ['KeyZ', 'KeyJ', 'Space']);
+  assert.deepEqual(holes.a, ['Space', 'KeyZ', 'KeyJ']);
   assert.deepEqual(holes.map, ['Tab', 'KeyQ']);
   assert.ok(holes.start.includes('Escape'), 'Esc is always there');
   // A save that only mentions one button still moves the key it names.
   const one = I.normalizeKeys({ b: ['KeyZ'] });
-  assert.deepEqual([one.b, one.a], [['KeyZ'], ['KeyJ', 'Space']]);
+  assert.deepEqual([one.b, one.a], [['KeyZ'], ['Space', 'KeyJ']]);
   for (const map of [twice, holes, one]) {
     const all = Object.values(map).flat();
     assert.equal(new Set(all).size, all.length, 'no key is on two buttons');
@@ -787,7 +842,7 @@ test('mini: keys are called what is printed on them', async () => {
   assert.equal(I.moveName(), 'W A S D');
   assert.equal(I.withKeys('{move}'), 'W, A, S and D move you.');
   I.resetKeys();
-  assert.equal(I.withKeys('{move} {a} swings.'), 'The arrows move you. Z swings.');
+  assert.equal(I.withKeys('{move} {a} swings.'), 'The arrows move you. Space swings.');
 });
 
 test('mini: a game pad is read by where its buttons sit, and named by what they say', async () => {
@@ -823,7 +878,7 @@ test('mini: a game pad is read by where its buttons sit, and named by what they 
   assert.equal(I.withKeys('{a} swings. {b} throws.'), '× swings. ○ throws.');
   I.setPadLayout('nonsense');
   I.setDevice('keys');
-  assert.equal(I.label('a'), 'Z');
+  assert.equal(I.label('a'), 'Space');
 });
 
 test('mini: everything the Settings screen can say has letters to say it with', async () => {

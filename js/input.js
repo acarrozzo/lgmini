@@ -15,7 +15,7 @@ export const DEFAULT_KEYS = {
   down: ['ArrowDown', 'KeyS'],
   left: ['ArrowLeft', 'KeyA'],
   right: ['ArrowRight', 'KeyD'],
-  a: ['KeyZ', 'KeyJ', 'Space'],
+  a: ['Space', 'KeyZ', 'KeyJ'],
   b: ['KeyX', 'KeyK'],
   y: ['KeyC', 'KeyL'],
   x: ['KeyV', 'Semicolon'],
@@ -352,7 +352,7 @@ function padLabel(button) {
   return PAD_LAYOUTS[activeLayout()].names[button];
 }
 
-/** The name on the button that does `button`: label('a') is 'Z' or 'A'. */
+/** The name on the button that does `button`: label('a') is 'Space' or 'A'. */
 export function label(button) {
   const name = device === 'keys' ? keyLabel(button) : device === 'pad' ? padLabel(button) : TOUCH_NAMES[button];
   return name === undefined ? button : name;
